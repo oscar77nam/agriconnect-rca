@@ -6,41 +6,44 @@ const BottomNav = ({
   user, 
   currentScreen, 
   onNavigate, 
-  setShowAddProduct 
+  setShowAddProduct,
+  getCartItemsCount 
 }) => {
   const getNavItems = () => {
     if (user?.type === 'farmer') {
       return [
-        { screen: 'home', icon: 'package', label: 'Mes Produits' },
-        { screen: 'add-product', icon: 'add', label: 'Ajouter', special: true },
-        { screen: 'orders', icon: 'bag-handle', label: 'Commandes' },
+        { screen: 'home', icon: 'storefront', label: 'Produits' },
+        { screen: 'add-product', icon: 'add-circle', label: 'Ajouter', special: true },
+        { screen: 'orders', icon: 'receipt', label: 'Commandes' },
         { screen: 'notifications', icon: 'notifications', label: 'Alertes' },
-        { screen: 'profile', icon: 'person', label: 'Profil' }
+        { screen: 'profile', icon: 'person-circle', label: 'Profil' }
       ];
     } else if (user?.type === 'buyer') {
       return [
-        { screen: 'home', icon: 'search', label: 'Marketplace' },
+        { screen: 'home', icon: 'search-circle', label: 'Explorer' },
         { screen: 'favorites', icon: 'heart', label: 'Favoris' },
-        { screen: 'cart', icon: 'bag-handle', label: 'Panier' },
-        { screen: 'orders', icon: 'package', label: 'Achats' },
-        { screen: 'profile', icon: 'person', label: 'Profil' }
+        { screen: 'cart', icon: 'bag-handle', label: 'Panier', badge: getCartItemsCount && getCartItemsCount() },
+        { screen: 'orders', icon: 'receipt', label: 'Achats' },
+        { screen: 'profile', icon: 'person-circle', label: 'Profil' }
       ];
     } else if (user?.type === 'admin') {
       return [
-        { screen: 'home', icon: 'eye', label: 'Admin' },
-        { screen: 'products', icon: 'package', label: 'Produits' },
-        { screen: 'orders', icon: 'bag-handle', label: 'Commandes' },
+        { screen: 'home', icon: 'analytics', label: 'Dashboard' },
+        { screen: 'products', icon: 'cube', label: 'Produits' },
+        { screen: 'orders', icon: 'receipt', label: 'Commandes' },
         { screen: 'notifications', icon: 'notifications', label: 'Alertes' },
-        { screen: 'profile', icon: 'person', label: 'Profil' }
+        { screen: 'profile', icon: 'person-circle', label: 'Profil' }
       ];
     }
     return [];
   };
 
+  const navItems = getNavItems();
+
   return (
     <View style={styles.container}>
       <View style={styles.navContainer}>
-        {getNavItems().map(({ screen, icon, label, special }) => (
+        {navItems.map(({ screen, icon, label, special, badge }) => (
           <TouchableOpacity
             key={screen}
             onPress={() => {
@@ -56,14 +59,21 @@ const BottomNav = ({
               special && styles.navItemSpecial
             ]}
           >
-            <Ionicons 
-              name={icon} 
-              size={20} 
-              color={
-                special ? 'white' :
-                currentScreen === screen ? '#16a34a' : '#6b7280'
-              } 
-            />
+            <View style={styles.iconContainer}>
+              <Ionicons 
+                name={icon} 
+                size={24} 
+                color={
+                  special ? 'white' :
+                  currentScreen === screen ? '#16a34a' : '#6b7280'
+                } 
+              />
+              {badge > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{badge}</Text>
+                </View>
+              )}
+            </View>
             <Text style={[
               styles.navLabel,
               currentScreen === screen && styles.navLabelActive,
@@ -89,6 +99,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#e5e7eb',
     paddingHorizontal: 8,
     paddingVertical: 8,
+    paddingBottom: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -112,17 +123,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     minWidth: 60,
+    flex: 1,
   },
   navItemActive: {
     backgroundColor: '#f0fdf4',
-    transform: [{ scale: 1.1 }],
+    transform: [{ scale: 1.05 }],
   },
   navItemSpecial: {
     backgroundColor: '#16a34a',
     transform: [{ scale: 1.1 }],
   },
-  navLabel: {
+  iconContainer: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: 'white',
     fontSize: 12,
+    fontWeight: 'bold',
+  },
+  navLabel: {
+    fontSize: 11,
     fontWeight: '500',
     color: '#6b7280',
     marginTop: 4,
@@ -130,9 +161,11 @@ const styles = StyleSheet.create({
   },
   navLabelActive: {
     color: '#16a34a',
+    fontWeight: '600',
   },
   navLabelSpecial: {
     color: 'white',
+    fontWeight: '600',
   },
 });
 

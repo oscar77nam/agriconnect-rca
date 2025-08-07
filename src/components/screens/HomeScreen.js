@@ -1,7 +1,13 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Image
+} from 'react-native';
 import Header from '../common/Header';
 
 const HomeScreen = ({ 
@@ -16,268 +22,345 @@ const HomeScreen = ({
   categories,
   cities,
   favorites,
-  onBack,
-  onHome,
-  screenHistory,
-  currentScreen,
   setShowAddProduct,
   setEditingProduct,
   deleteProduct,
   getUserOrders,
   addToCart,
+  showOrderModalForProduct,
   toggleFavorite,
   products,
-  orders
+  orders,
+  getStats,
+  onBack,
+  onHome,
+  screenHistory,
+  currentScreen
 }) => {
-  if (user?.type === 'farmer') {
+
+  // Fonction sécurisée pour afficher les données produit
+  const getProductValue = (product, path, defaultValue = 'Non spécifié') => {
+    try {
+      const paths = path.split('.');
+      let current = product;
+      
+      for (const p of paths) {
+        if (current && current[p] !== undefined) {
+          current = current[p];
+        } else {
+          return defaultValue;
+        }
+      }
+      
+      return current || defaultValue;
+    } catch (error) {
+      console.warn('Erreur accès propriété produit:', error);
+      return defaultValue;
+    }
+  };
+
+  // Fonction pour formater la date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Non spécifié';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('fr-FR');
+    } catch (error) {
+      return 'Date invalide';
+    }
+  };
+
+  // Rendu d'un produit sécurisé
+  const renderProduct = (product) => {
+    if (!product) return null;
+
+    // Valeurs sécurisées avec fallbacks
+    const name = getProductValue(product, 'name', 'Produit sans nom');
+    const price = getProductValue(product, 'price', 0);
+    const farmer = getProductValue(product, 'farmer', getProductValue(product, 'farmer_name', 'Agriculteur inconnu'));
+    const location = getProductValue(product, 'location', getProductValue(product, 'farmer_location', 'Localisation inconnue'));
+    const stock = getProductValue(product, 'stock', 0);
+    const unit = getProductValue(product, 'unit', 'kg');
+    const category = getProductValue(product, 'category', getProductValue(product, 'category_name', 'Sans catégorie'));
+    
+    // Date de récolte - plusieurs chemins possibles
+    const harvestDate = getProductValue(product, 'harvest_date') || 
+                       getProductValue(product, 'metadata.harvestDate') ||
+                       getProductValue(product, 'harvestDate');
+    
+    // Bio - plusieurs chemins possibles
+    const isOrganic = getProductValue(product, 'organic', false) || 
+                     getProductValue(product, 'metadata.organic', false);
+    
+    const imageUrl = getProductValue(product, 'image_url') || 
+                    getProductValue(product, 'imageUrl');
+
+    const isFavorite = favorites && favorites.includes(product.id);
+
     return (
-      <View style={styles.container}>
-        <Header 
-          title="👨‍🌾 Mes Produits" 
-          showBackButton={false}
-          onBack={onBack}
-          onHome={onHome}
-          screenHistory={screenHistory}
-          currentScreen={currentScreen}
-          user={user}
-        />
-        
-        <View style={styles.headerSection}>
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.headerTitle}>Catalogue Produits</Text>
-              <Text style={styles.headerSubtitle}>Gérez votre catalogue</Text>
-            </View>
-            <View style={styles.statsContainer}>
-              <Text style={styles.statsLabel}>Produits actifs</Text>
-              <Text style={styles.statsNumber}>{filteredProducts.length}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => setShowAddProduct(true)}
-            style={styles.addButton}
-          >
-            <Ionicons name="add" size={24} color="white" />
-            <Text style={styles.addButtonText}>Ajouter un nouveau produit</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-          {filteredProducts.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>📦</Text>
-              <Text style={styles.emptyTitle}>Aucun produit</Text>
-              <Text style={styles.emptySubtitle}>Ajoutez votre premier produit</Text>
-              <TouchableOpacity 
-                onPress={() => setShowAddProduct(true)}
-                style={styles.emptyButton}
-              >
-                <Text style={styles.emptyButtonText}>➕ Ajouter un produit</Text>
-              </TouchableOpacity>
-            </View>
+      <View key={product.id || Math.random()} style={styles.productCard}>
+        {/* Image du produit */}
+        <View style={styles.productImageContainer}>
+          {imageUrl ? (
+            <Image 
+              source={{ uri: imageUrl }} 
+              style={styles.productImage}
+              onError={() => console.warn('Erreur chargement image:', imageUrl)}
+            />
           ) : (
-            <View>
-              {filteredProducts.map(product => (
-                <View key={product.id} style={styles.productCard}>
-                  <View style={styles.productContent}>
-                    <Text style={styles.productEmoji}>{product.image}</Text>
-                    <View style={styles.productInfo}>
-                      <View style={styles.productHeader}>
-                        <Text style={styles.productName}>{product.name}</Text>
-                        <View style={styles.productActions}>
-                          <TouchableOpacity 
-                            onPress={() => setEditingProduct(product)}
-                            style={styles.editButton}
-                          >
-                            <Ionicons name="pencil" size={18} color="#2563eb" />
-                          </TouchableOpacity>
-                          <TouchableOpacity 
-                            onPress={() => deleteProduct(product.id)}
-                            style={styles.deleteButton}
-                          >
-                            <Ionicons name="trash" size={18} color="#dc2626" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      
-                      <View style={styles.productDetails}>
-                        <View>
-                          <Text style={styles.productPrice}>
-                            {product.price.toLocaleString()}
-                            <Text style={styles.productUnit}> FCFA/{product.unit}</Text>
-                          </Text>
-                        </View>
-                        <View style={styles.stockInfo}>
-                          <Text style={styles.stockLabel}>Stock</Text>
-                          <Text style={styles.stockValue}>{product.stock} {product.unit}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.productMeta}>
-                        <Text style={styles.metaText}>📅 Récolté le: {product.metadata.harvestDate}</Text>
-                        <Text style={styles.metaText}>📊 Total vendu: {product.totalSold} {product.unit}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              ))}
+            <View style={styles.productImagePlaceholder}>
+              <Text style={styles.productImageEmoji}>🌾</Text>
             </View>
           )}
-        </ScrollView>
-      </View>
-    );
-  } else if (user?.type === 'buyer') {
-    return (
-      <View style={styles.container}>
-        <Header 
-          title="🛒 Marketplace" 
-          showBackButton={false}
-          onBack={onBack}
-          onHome={onHome}
-          screenHistory={screenHistory}
-          currentScreen={currentScreen}
-          user={user}
-        />
-        
-        <View style={styles.marketplaceHeader}>
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
-            <TextInput
-              placeholder="Rechercher..."
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-              style={styles.searchInput}
-            />
-          </View>
-
-          <View style={styles.filtersContainer}>
-            <View style={styles.filterItem}>
-              <Picker
-                selectedValue={selectedCategory}
-                onValueChange={setSelectedCategory}
-                style={styles.filterPicker}
-              >
-                {categories.map(category => (
-                  <Picker.Item key={category.id} label={category.name} value={category.id} />
-                ))}
-              </Picker>
+          
+          {/* Badge bio */}
+          {isOrganic && (
+            <View style={styles.organicBadge}>
+              <Text style={styles.organicBadgeText}>🌱 BIO</Text>
             </View>
-            
-            <View style={styles.filterItem}>
-              <Picker
-                selectedValue={selectedCity}
-                onValueChange={setSelectedCity}
-                style={styles.filterPicker}
-              >
-                {cities.map(city => (
-                  <Picker.Item key={city.id} label={city.name} value={city.id} />
-                ))}
-              </Picker>
-            </View>
-          </View>
+          )}
         </View>
 
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-          {filteredProducts.map(product => (
-            <View key={product.id} style={styles.productCard}>
-              <View style={styles.productContent}>
-                <Text style={styles.productEmoji}>{product.image}</Text>
-                <View style={styles.productInfo}>
-                  <View style={styles.productHeader}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <TouchableOpacity 
-                      onPress={() => toggleFavorite(product.id)}
-                      style={styles.favoriteButton}
-                    >
-                      <Ionicons 
-                        name={favorites.includes(product.id) ? "heart" : "heart-outline"} 
-                        size={24} 
-                        color={favorites.includes(product.id) ? "#dc2626" : "#9ca3af"} 
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <View style={styles.farmerInfo}>
-                    <Ionicons name="person" size={16} color="#9ca3af" />
-                    <Text style={styles.farmerName}>{product.farmer}</Text>
-                    <Ionicons name="location" size={16} color="#9ca3af" />
-                    <Text style={styles.farmerLocation}>{product.location}</Text>
-                  </View>
-                  
-                  <View style={styles.productFooter}>
-                    <View>
-                      <Text style={styles.productPriceBuyer}>
-                        {product.price.toLocaleString()}
-                        <Text style={styles.productUnit}> FCFA/{product.unit}</Text>
-                      </Text>
-                      <Text style={styles.stockText}>Stock: {product.stock} {product.unit}</Text>
-                    </View>
-                    
-                    <TouchableOpacity 
-                      onPress={() => addToCart(product)}
-                      style={styles.orderButton}
-                    >
-                      <Text style={styles.orderButtonText}>Commander</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
+        {/* Informations du produit */}
+        <View style={styles.productInfo}>
+          <View style={styles.productHeader}>
+            <Text style={styles.productName}>{name}</Text>
+            <TouchableOpacity 
+              onPress={() => toggleFavorite && toggleFavorite(product.id)}
+              style={styles.favoriteButton}
+            >
+              <Text style={styles.favoriteIcon}>
+                {isFavorite ? '❤️' : '🤍'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.productCategory}>{category}</Text>
+          
+          <View style={styles.productDetails}>
+            <Text style={styles.productPrice}>
+              {price ? `${price.toLocaleString()} FCFA` : 'Prix non spécifié'} / {unit}
+            </Text>
+            <Text style={styles.productStock}>
+              Stock: {stock} {unit}
+            </Text>
+          </View>
+
+          <View style={styles.farmerInfo}>
+            <Text style={styles.farmerName}>👨‍🌾 {farmer}</Text>
+            <Text style={styles.farmerLocation}>📍 {location}</Text>
+            {harvestDate !== 'Non spécifié' && (
+              <Text style={styles.harvestDate}>
+                🗓️ Récolté le: {formatDate(harvestDate)}
+              </Text>
+            )}
+          </View>
+
+          {/* Actions */}
+          <View style={styles.productActions}>
+            {user && user.type === 'buyer' && (
+              <>
+                <TouchableOpacity 
+                  style={styles.cartButton}
+                  onPress={() => addToCart && addToCart(product, 1)}
+                >
+                  <Text style={styles.cartButtonText}>🛒 Ajouter</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.orderButton}
+                  onPress={() => showOrderModalForProduct && showOrderModalForProduct(product)}
+                >
+                  <Text style={styles.orderButtonText}>📦 Commander</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {user && user.type === 'farmer' && user.id === product.farmer_id && (
+              <>
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={() => setEditingProduct && setEditingProduct(product)}
+                >
+                  <Text style={styles.editButtonText}>✏️ Modifier</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.deleteButton}
+                  onPress={() => deleteProduct && deleteProduct(product.id)}
+                >
+                  <Text style={styles.deleteButtonText}>🗑️ Supprimer</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
       </View>
     );
-  } else if (user?.type === 'admin') {
-    return (
-      <View style={styles.container}>
-        <Header 
-          title="👑 Administration" 
-          showBackButton={false}
-          onBack={onBack}
-          onHome={onHome}
-          screenHistory={screenHistory}
-          currentScreen={currentScreen}
-          user={user}
-        />
-        
-        <View style={styles.adminHeader}>
-          <Text style={styles.adminSubtitle}>Vue d'ensemble</Text>
+  };
+
+  // Statistiques sécurisées
+  const stats = getStats ? getStats() : {};
+  const safeProducts = Array.isArray(filteredProducts) ? filteredProducts : [];
+
+  return (
+    <View style={styles.container}>
+      <Header 
+        user={user}
+        onBack={onBack}
+        onHome={onHome}
+        currentScreen={currentScreen}
+        showBackButton={screenHistory && screenHistory.length > 0}
+      />
+
+      <ScrollView style={styles.content}>
+        {/* En-tête de bienvenue */}
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeText}>
+            Bonjour {user?.name || 'Utilisateur'} ! 🌾
+          </Text>
+          <Text style={styles.welcomeSubtext}>
+            {user?.type === 'farmer' ? 'Gérez vos produits' : 'Découvrez nos produits frais'}
+          </Text>
         </View>
 
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{products.length}</Text>
-              <Text style={styles.statLabel}>Produits</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: '#2563eb' }]}>
-              <Text style={styles.statNumber}>{orders.length}</Text>
-              <Text style={styles.statLabel}>Commandes</Text>
-            </View>
-          </View>
-
-          <View style={styles.adminCard}>
-            <Text style={styles.adminCardTitle}>Tous les produits</Text>
-            <View>
-              {products.slice(0, 5).map(product => (
-                <View key={product.id} style={styles.adminProductItem}>
-                  <View style={styles.adminProductInfo}>
-                    <Text style={styles.adminProductEmoji}>{product.image}</Text>
-                    <View>
-                      <Text style={styles.adminProductName}>{product.name}</Text>
-                      <Text style={styles.adminProductFarmer}>{product.farmer}</Text>
-                    </View>
+        {/* Statistiques rapides */}
+        {Object.keys(stats).length > 0 && (
+          <View style={styles.statsSection}>
+            <Text style={styles.sectionTitle}>📊 Résumé</Text>
+            <View style={styles.statsGrid}>
+              {user?.type === 'farmer' && (
+                <>
+                  <View style={styles.statCard}>
+                    <Text style={styles.statValue}>{stats.productsCount || 0}</Text>
+                    <Text style={styles.statLabel}>Produits</Text>
                   </View>
-                  <Text style={styles.adminProductPrice}>{product.price.toLocaleString()} FCFA</Text>
-                </View>
-              ))}
+                  <View style={styles.statCard}>
+                    <Text style={styles.statValue}>{stats.ordersCount || 0}</Text>
+                    <Text style={styles.statLabel}>Commandes</Text>
+                  </View>
+                </>
+              )}
+              {user?.type === 'buyer' && (
+                <>
+                  <View style={styles.statCard}>
+                    <Text style={styles.statValue}>{stats.ordersCount || 0}</Text>
+                    <Text style={styles.statLabel}>Commandes</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <Text style={styles.statValue}>{stats.favoritesCount || 0}</Text>
+                    <Text style={styles.statLabel}>Favoris</Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
-        </ScrollView>
-      </View>
-    );
-  }
+        )}
+
+        {/* Barre de recherche */}
+        <View style={styles.searchSection}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchTerm || ''}
+            onChangeText={setSearchTerm}
+            placeholder="🔍 Rechercher des produits..."
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
+
+        {/* Filtres de catégories */}
+        {categories && Array.isArray(categories) && categories.length > 0 && (
+          <View style={styles.filterSection}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <TouchableOpacity
+                key="category-tous"
+                style={[
+                  styles.categoryFilter,
+                  selectedCategory === 'tous' && styles.categoryFilterActive
+                ]}
+                onPress={() => setSelectedCategory && setSelectedCategory('tous')}
+              >
+                <Text style={[
+                  styles.categoryFilterText,
+                  selectedCategory === 'tous' && styles.categoryFilterTextActive
+                ]}>
+                  Tous
+                </Text>
+              </TouchableOpacity>
+              
+              {categories.map((category, index) => {
+                // Gérer les catégories qui sont des objets ou des strings
+                let categoryName, categoryKey;
+                
+                if (typeof category === 'string') {
+                  categoryName = category;
+                  categoryKey = category;
+                } else if (category && typeof category === 'object') {
+                  categoryName = category.name || category.label || `Catégorie ${index}`;
+                  categoryKey = category.id || category.name || `category-${index}`;
+                } else {
+                  categoryName = `Catégorie ${index}`;
+                  categoryKey = `category-${index}`;
+                }
+                
+                return (
+                  <TouchableOpacity
+                    key={`filter-${categoryKey}-${index}`}
+                    style={[
+                      styles.categoryFilter,
+                      selectedCategory === categoryName && styles.categoryFilterActive
+                    ]}
+                    onPress={() => setSelectedCategory && setSelectedCategory(categoryName)}
+                  >
+                    <Text style={[
+                      styles.categoryFilterText,
+                      selectedCategory === categoryName && styles.categoryFilterTextActive
+                    ]}>
+                      {categoryName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Bouton d'ajout pour les agriculteurs */}
+        {user && user.type === 'farmer' && (
+          <View style={styles.addProductSection}>
+            <TouchableOpacity 
+              style={styles.addProductButton}
+              onPress={() => setShowAddProduct && setShowAddProduct(true)}
+            >
+              <Text style={styles.addProductButtonText}>➕ Ajouter un produit</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Liste des produits */}
+        <View style={styles.productsSection}>
+          <Text style={styles.sectionTitle}>
+            🌾 Produits disponibles ({safeProducts.length})
+          </Text>
+          
+          {safeProducts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateEmoji}>📭</Text>
+              <Text style={styles.emptyStateText}>Aucun produit disponible</Text>
+              <Text style={styles.emptyStateSubtext}>
+                {user?.type === 'farmer' 
+                  ? 'Ajoutez votre premier produit !' 
+                  : 'Revenez plus tard pour découvrir nos produits'
+                }
+              </Text>
+            </View>
+          ) : (
+            safeProducts.map(renderProduct)
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
@@ -285,323 +368,291 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f9fafb',
   },
-  headerSection: {
-    backgroundColor: '#16a34a',
-    padding: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  marketplaceHeader: {
-    backgroundColor: '#2563eb',
-    padding: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  adminHeader: {
-    backgroundColor: '#7c3aed',
-    padding: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: 'white',
-    opacity: 0.9,
-  },
-  adminSubtitle: {
-    fontSize: 16,
-    color: 'white',
-    opacity: 0.9,
-  },
-  statsContainer: {
-    alignItems: 'flex-end',
-  },
-  statsLabel: {
-    fontSize: 12,
-    color: 'white',
-    opacity: 0.9,
-  },
-  statsNumber: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  addButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 16,
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 16,
-    fontSize: 16,
-    color: '#1f2937',
-  },
-  filtersContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  filterItem: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 12,
-  },
-  filterPicker: {
-    height: 40,
-  },
   content: {
     flex: 1,
   },
-  contentContainer: {
-    padding: 24,
-    paddingBottom: 100, // Space for bottom navigation
+  welcomeSection: {
+    padding: 20,
+    backgroundColor: '#16a34a',
   },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 48,
+  welcomeText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 4,
   },
-  emptyEmoji: {
-    fontSize: 60,
+  welcomeSubtext: {
+    fontSize: 16,
+    color: 'white',
+    opacity: 0.9,
+  },
+  statsSection: {
+    padding: 20,
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    marginTop: -10,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#374151',
     marginBottom: 16,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  emptySubtitle: {
-    fontSize: 16,
+  statCard: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#16a34a',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
     color: '#6b7280',
-    marginBottom: 24,
   },
-  emptyButton: {
+  searchSection: {
+    padding: 20,
+    paddingTop: 16,
+  },
+  searchInput: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filterSection: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  categoryFilter: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  categoryFilterActive: {
     backgroundColor: '#16a34a',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 16,
+    borderColor: '#16a34a',
   },
-  emptyButtonText: {
+  categoryFilterText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  categoryFilterTextActive: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  addProductSection: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  addProductButton: {
+    backgroundColor: '#16a34a',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  addProductButtonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+  },
+  productsSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
   productCard: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 12,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.22,
-    shadowRadius: 2.22,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 3,
+    overflow: 'hidden',
   },
-  productContent: {
-    flexDirection: 'row',
+  productImageContainer: {
+    height: 200,
+    position: 'relative',
   },
-  productEmoji: {
-    fontSize: 50,
-    marginRight: 16,
+  productImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  productImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f3f4f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productImageEmoji: {
+    fontSize: 60,
+  },
+  organicBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: '#16a34a',
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  organicBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
   },
   productInfo: {
-    flex: 1,
+    padding: 16,
   },
   productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
   productName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#374151',
     flex: 1,
+  },
+  favoriteButton: {
+    padding: 4,
+  },
+  favoriteIcon: {
+    fontSize: 20,
+  },
+  productCategory: {
+    fontSize: 14,
+    color: '#16a34a',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  productDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  productPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ef4444',
+  },
+  productStock: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  farmerInfo: {
+    marginBottom: 16,
+  },
+  farmerName: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 2,
+  },
+  farmerLocation: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  harvestDate: {
+    fontSize: 14,
+    color: '#6b7280',
   },
   productActions: {
     flexDirection: 'row',
     gap: 8,
   },
-  editButton: {
-    backgroundColor: '#dbeafe',
+  cartButton: {
+    flex: 1,
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
     padding: 12,
-    borderRadius: 12,
-  },
-  deleteButton: {
-    backgroundColor: '#fee2e2',
-    padding: 12,
-    borderRadius: 12,
-  },
-  favoriteButton: {
-    padding: 8,
-    borderRadius: 20,
-  },
-  productDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  productPrice: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#16a34a',
-  },
-  productPriceBuyer: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2563eb',
-  },
-  productUnit: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  stockInfo: {
-    alignItems: 'flex-end',
-  },
-  stockLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  stockValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  stockText: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  productMeta: {
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  farmerInfo: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
   },
-  farmerName: {
+  cartButtonText: {
+    color: 'white',
     fontSize: 14,
     fontWeight: '600',
   },
-  farmerLocation: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  productFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   orderButton: {
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    flex: 1,
+    backgroundColor: '#16a34a',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
   },
   orderButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 24,
-  },
-  statCard: {
+  editButton: {
     flex: 1,
-    backgroundColor: '#16a34a',
-    padding: 24,
-    borderRadius: 16,
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 12,
     alignItems: 'center',
   },
-  statNumber: {
-    fontSize: 30,
-    fontWeight: 'bold',
+  editButtonText: {
     color: 'white',
-  },
-  statLabel: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    flex: 1,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  deleteButtonText: {
     color: 'white',
-    opacity: 0.9,
+    fontSize: 14,
+    fontWeight: '600',
   },
-  adminCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
   },
-  adminCardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  emptyStateEmoji: {
+    fontSize: 60,
     marginBottom: 16,
   },
-  adminProductItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    marginBottom: 12,
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginBottom: 8,
   },
-  adminProductInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  adminProductEmoji: {
-    fontSize: 24,
-  },
-  adminProductName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  adminProductFarmer: {
+  emptyStateSubtext: {
     fontSize: 14,
     color: '#6b7280',
-  },
-  adminProductPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#16a34a',
+    textAlign: 'center',
   },
 });
 

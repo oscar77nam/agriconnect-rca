@@ -1,14 +1,22 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useAgriConnect } from './hooks/useAgriConnect';
 import WelcomeScreen from './components/screens/WelcomeScreen';
+import LoginScreen from './components/screens/LoginScreen';
 import RegisterScreen from './components/screens/RegisterScreen';
 import HomeScreen from './components/screens/HomeScreen';
 import OrdersScreen from './components/screens/OrdersScreen';
 import NotificationsScreen from './components/screens/NotificationsScreen';
 import ProfileScreen from './components/screens/ProfileScreen';
+import CartScreen from './components/screens/CartScreen';
+import FavoritesScreen from './components/screens/FavoritesScreen';
+import ProductsScreen from './components/screens/ProductsScreen';
+import SettingsScreen from './components/screens/SettingsScreen';
 import BottomNav from './components/common/BottomNav';
 import ProductForm from './components/common/ProductForm';
+import ConnectionStatus from './components/common/ConnectionStatus';
+// Temporairement commenté pour debug
+// import OrderModal from './components/common/OrderModal';
 
 const AgriConnectRCA = () => {
   const {
@@ -28,6 +36,11 @@ const AgriConnectRCA = () => {
     screenHistory,
     categories,
     cities,
+    cart,
+    showOrderModal,
+    orderingProduct,
+    loading,
+    isOnline,
     
     // Setters
     setSearchTerm,
@@ -41,13 +54,26 @@ const AgriConnectRCA = () => {
     goBack,
     goHome,
     handleRegister,
+    handleLogin,
+    logout,
     addProduct,
     updateProduct,
     deleteProduct,
     getUserOrders,
     addToCart,
+    removeFromCart,
+    updateCartQuantity,
+    clearCart,
+    checkout,
     toggleFavorite,
-    getStats
+    getStats,
+    getCartTotal,
+    getCartItemsCount,
+    showOrderModalForProduct,
+    hideOrderModal,
+    handleOrderConfirm,
+    clearAllNotifications,
+    addNotification
   } = useAgriConnect();
 
   // Props communes pour tous les écrans
@@ -66,12 +92,34 @@ const AgriConnectRCA = () => {
   };
 
   // ========== RENDU PRINCIPAL ==========
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.loadingEmoji}>🌾</Text>
+        <Text style={styles.loadingText}>AgriConnect RCA</Text>
+        <Text style={styles.loadingSubtext}>Chargement en cours...</Text>
+        {!isOnline && (
+          <Text style={styles.offlineText}>Mode hors ligne</Text>
+        )}
+      </View>
+    );
+  }
+
   if (!user) {
     return (
       <View style={styles.container}>
         {currentScreen === 'register' ? (
           <RegisterScreen 
             onRegister={handleRegister}
+            onNavigate={navigateToScreen}
+            loading={loading}
+            {...commonScreenProps}
+          />
+        ) : currentScreen === 'login' ? (
+          <LoginScreen 
+            onLogin={handleLogin}
+            onNavigate={navigateToScreen}
+            loading={loading}
             {...commonScreenProps}
           />
         ) : (
@@ -83,6 +131,9 @@ const AgriConnectRCA = () => {
 
   return (
     <View style={styles.container}>
+      {/* Indicateur de statut de connexion */}
+      <ConnectionStatus isOnline={isOnline} loading={loading} />
+      
       {/* ========== MODALS ========== */}
       {showAddProduct && (
         <ProductForm 
@@ -98,6 +149,18 @@ const AgriConnectRCA = () => {
           onCancel={() => setEditingProduct(null)}
         />
       )}
+
+      {/* MODAL DE COMMANDE - Temporairement désactivé pour debug
+      {showOrderModal && (
+        <OrderModal 
+          visible={showOrderModal}
+          product={orderingProduct}
+          user={user}
+          onClose={hideOrderModal}
+          onConfirm={handleOrderConfirm}
+        />
+      )}
+      */}
 
       {/* ========== ÉCRANS PRINCIPAUX ========== */}
       {currentScreen === 'home' && (
@@ -117,6 +180,7 @@ const AgriConnectRCA = () => {
           deleteProduct={deleteProduct}
           getUserOrders={getUserOrders}
           addToCart={addToCart}
+          showOrderModalForProduct={showOrderModalForProduct}
           toggleFavorite={toggleFavorite}
           products={products}
           orders={orders}
@@ -135,6 +199,7 @@ const AgriConnectRCA = () => {
       {currentScreen === 'notifications' && (
         <NotificationsScreen 
           notifications={notifications}
+          clearAllNotifications={clearAllNotifications}
           {...commonScreenProps}
         />
       )}
@@ -142,6 +207,8 @@ const AgriConnectRCA = () => {
       {currentScreen === 'profile' && (
         <ProfileScreen 
           getStats={getStats}
+          logout={logout}
+          onNavigate={navigateToScreen}
           {...commonScreenProps}
         />
       )}
@@ -153,12 +220,41 @@ const AgriConnectRCA = () => {
           favorites={favorites}
           toggleFavorite={toggleFavorite}
           addToCart={addToCart}
+          showOrderModalForProduct={showOrderModalForProduct}
           {...commonScreenProps}
         />
       )}
 
       {currentScreen === 'cart' && (
         <CartScreen 
+          cart={cart}
+          updateCartQuantity={updateCartQuantity}
+          removeFromCart={removeFromCart}
+          clearCart={clearCart}
+          checkout={checkout}
+          getCartTotal={getCartTotal}
+          {...commonScreenProps}
+        />
+      )}
+
+      {currentScreen === 'products' && (
+        <ProductsScreen 
+          products={products}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          selectedCity={selectedCity}
+          setSelectedCity={setSelectedCity}
+          categories={categories}
+          cities={cities}
+          filteredProducts={filteredProducts}
+          {...commonScreenProps}
+        />
+      )}
+
+      {currentScreen === 'settings' && (
+        <SettingsScreen 
           {...commonScreenProps}
         />
       )}
@@ -169,47 +265,8 @@ const AgriConnectRCA = () => {
         currentScreen={currentScreen}
         onNavigate={navigateToScreen}
         setShowAddProduct={setShowAddProduct}
+        getCartItemsCount={getCartItemsCount}
       />
-    </View>
-  );
-};
-
-// ========== ÉCRANS SUPPLÉMENTAIRES ==========
-
-// Écran Favoris (simple)
-const FavoritesScreen = ({ products, favorites, toggleFavorite, addToCart, ...props }) => {
-  const favoriteProducts = products.filter(p => favorites.includes(p.id));
-  
-  return (
-    <HomeScreen 
-      {...props}
-      filteredProducts={favoriteProducts}
-      favorites={favorites}
-      toggleFavorite={toggleFavorite}
-      addToCart={addToCart}
-      products={products}
-      // Props vides pour désactiver la recherche
-      searchTerm=""
-      setSearchTerm={() => {}}
-      selectedCategory="tous"
-      setSelectedCategory={() => {}}
-      selectedCity="tous"
-      setSelectedCity={() => {}}
-      categories={[]}
-      cities={[]}
-    />
-  );
-};
-
-// Écran Panier (simple placeholder)
-const CartScreen = (props) => {
-  return (
-    <View style={styles.container}>
-      <Header title="🛒 Mon Panier" {...props} />
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyText}>Panier vide</Text>
-        <Text style={styles.emptySubtext}>Ajoutez des produits depuis le marketplace</Text>
-      </View>
     </View>
   );
 };
@@ -219,22 +276,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f9fafb',
   },
-  emptyState: {
-    flex: 1,
+  loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    backgroundColor: '#16a34a',
   },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
+  loadingEmoji: {
+    fontSize: 80,
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: 'white',
     marginBottom: 8,
   },
-  emptySubtext: {
+  loadingSubtext: {
     fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
+    color: 'white',
+    opacity: 0.9,
+    marginBottom: 16,
+  },
+  offlineText: {
+    fontSize: 14,
+    color: '#fbbf24',
+    fontWeight: '600',
+    backgroundColor: 'rgba(251, 191, 36, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
 });
 
