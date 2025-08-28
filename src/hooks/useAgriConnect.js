@@ -1,662 +1,220 @@
-import { useState, useEffect } from 'react';
-import { Alert } from 'react-native';
+// src/hooks/useAgriConnect.js
+import { useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DatabaseService from '../services/database';
-import { initialProducts, initialOrders, categories, cities } from '../data/constants';
+import API, { getUser as apiGetUser } from '../AgriConnectRCA';
 
-export const useAgriConnect = () => {
-  console.log('🔍 Hook useAgriConnect initialisé');
-  
-  const [currentScreen, setCurrentScreen] = useState('welcome');
+const NAV_KEY  = 'agriconnect_last_screen';
+const CART_KEY = 'agriconnect_cart';
+const FAV_KEY  = 'agriconnect_favs';
+
+function useAgriConnect() {
+  // ------- état global -------
   const [user, setUser] = useState(null);
-  const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('tous');
-  const [selectedCity, setSelectedCity] = useState('tous');
-  const [notifications, setNotifications] = useState([]);
-  const [favorites, setFavorites] = useState([]);
-  const [showAddProduct, setShowAddProduct] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const [currentScreen, setCurrentScreen] = useState('welcome');
   const [screenHistory, setScreenHistory] = useState([]);
+
+  const [products, setProducts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
   const [cart, setCart] = useState([]);
-  const [showOrderModal, setShowOrderModal] = useState(false);
-  const [orderingProduct, setOrderingProduct] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const [favorites, setFavorites] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [notifications, setNotifications] = useState([]);
 
-  // Fonction utilitaire pour ajouter des notifications
-  const addNotification = (message) => {
-    const newNotification = {
-      id: Date.now(),
-      message,
-      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    };
-    setNotifications(prev => [newNotification, ...prev]);
-  };
-
-  // Fonction pour charger les données utilisateur
-  const loadUserData = async () => {
-    if (!user || !isOnline) return;
-    
-    try {
-      // Charger les produits
-      const productsData = await DatabaseService.getProducts();
-      setProducts(productsData);
-      
-      // Charger les commandes
-      const ordersData = await DatabaseService.getOrders();
-      setOrders(ordersData);
-      
-      // Charger les favoris
-      const favoritesData = await DatabaseService.getFavorites();
-      setFavorites(favoritesData.map(fav => fav.product_id));
-      
-      // Charger les notifications
-      const notificationsData = await DatabaseService.getNotifications();
-      setNotifications(notificationsData);
-      
-    } catch (error) {
-      console.error('Erreur chargement données:', error);
-      addNotification('⚠️ Erreur de synchronisation - Mode hors ligne activé');
-      setIsOnline(false);
-    }
-  };
-
-  // FONCTION D'INSCRIPTION
-  const handleRegister = async (userData) => {
-    console.log('🔄 handleRegister appelé dans hook avec:', userData);
-    setLoading(true);
-    
-    try {
-      // Validation des données
-      if (!userData.name || !userData.phone || !userData.password) {
-        throw new Error('Nom, téléphone et mot de passe sont requis');
-      }
-
-      console.log('📡 Appel DatabaseService.register...');
-      
-      // Tentative d'inscription via API
-      const response = await DatabaseService.register({
-        name: userData.name.trim(),
-        phone: userData.phone.trim(),
-        password: userData.password,
-        location: userData.location || 'Non spécifié',
-        user_type: userData.type || 'buyer'
-      });
-
-      console.log('📨 Réponse DatabaseService:', response);
-
-      if (response.success) {
-        setUser(response.user);
-        setCurrentScreen('home');
-        setScreenHistory([]);
-        await loadUserData();
-        addNotification(`🎉 Bienvenue ${response.user.name} sur AgriConnect RCA !`);
-        setIsOnline(true);
-        return response;
-      } else {
-        throw new Error(response.message || 'Erreur lors de l\'inscription');
-      }
-
-    } catch (error) {
-      console.error('❌ Erreur inscription dans hook:', error);
-      
-      // Mode fallback (pour démo hors ligne)
-      if (error.message.includes('Network request failed') || error.message.includes('fetch')) {
-        console.log('📱 Mode hors ligne activé');
-        const newUser = {
-          id: Date.now(),
-          name: userData.name,
-          phone: userData.phone,
-          location: userData.location || 'Non spécifié',
-          type: userData.type || 'buyer'
-        };
-        setUser(newUser);
-        setCurrentScreen('home');
-        setScreenHistory([]);
-        addNotification(`🎉 Bienvenue ${userData.name} (Mode hors ligne) !`);
-        setIsOnline(false);
-        return { success: true, user: newUser };
-      }
-      
-      // Relancer l'erreur pour que le composant puisse la gérer
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // FONCTION DE CONNEXION
-  const handleLogin = async (credentials) => {
-    console.log('🔐 handleLogin appelé dans hook avec:', { phone: credentials.phone });
-    setLoading(true);
-    try {
-      const response = await DatabaseService.login(credentials);
-      
-      if (response.success) {
-        setUser(response.user);
-        setCurrentScreen('home');
-        setScreenHistory([]);
-        await loadUserData();
-        addNotification(`🎉 Bienvenue ${response.user.name} !`);
-        setIsOnline(true);
-        return response;
-      } else {
-        throw new Error(response.message || 'Erreur de connexion');
-      }
-    } catch (error) {
-      console.error('Erreur login:', error);
-      
-      // Tentative de connexion locale pour démo
-      const demoUsers = [
-        { id: 1, name: 'Jean Bokassa', phone: '+23670123456', type: 'farmer', location: 'PK5, Bangui' },
-        { id: 2, name: 'Marie Yakoma', phone: '+23670987654', type: 'buyer', location: 'Bégoua' },
-        { id: 3, name: 'Admin User', phone: '+23670111111', type: 'admin', location: 'Bangui' }
-      ];
-      
-      const demoUser = demoUsers.find(u => u.phone === credentials.phone);
-      if (demoUser && credentials.password === 'demo123') {
-        setUser(demoUser);
-        setCurrentScreen('home');
-        setScreenHistory([]);
-        addNotification(`🎉 Bienvenue ${demoUser.name} (Mode démo) !`);
-        setIsOnline(false);
-        return { success: true };
-      }
-      
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Initialisation de l'app
-  const initializeApp = async () => {
-    setLoading(true);
-    try {
-      await DatabaseService.init();
-      const savedUser = await DatabaseService.getCurrentUser();
-      
-      if (savedUser) {
-        setUser(savedUser);
-        setCurrentScreen('home');
-        await loadUserData();
-      } else {
-        // Mode hors ligne avec données locales
-        setProducts(initialProducts);
-        setOrders(initialOrders);
-        setFilteredProducts(initialProducts);
-      }
-      
-      setNotifications([
-        { id: 1, message: '🌾 Nouveau manioc bio disponible chez Jean Bokassa', time: '09:30' },
-        { id: 2, message: '📦 Votre commande de manioc est prête pour livraison', time: '08:45' },
-        { id: 3, message: '💰 Prix réduit sur poudre de manioc: -15% aujourd\'hui!', time: '07:20' }
-      ]);
-      
-    } catch (error) {
-      console.error('Erreur initialisation:', error);
-      // Fallback en mode hors ligne
-      setProducts(initialProducts);
-      setOrders(initialOrders);
-      setFilteredProducts(initialProducts);
-      setIsOnline(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // useEffect pour l'initialisation
+  // ------- boot -------
   useEffect(() => {
-    initializeApp();
+    (async () => {
+      try {
+        const cachedUser = await apiGetUser();
+        if (cachedUser) {
+          setUser(cachedUser);
+          setCurrentScreen('products'); // acheteur: arrive sur la liste produits
+          await refetchProducts();
+        } else {
+          const last = await AsyncStorage.getItem(NAV_KEY);
+          if (last) setCurrentScreen(last);
+        }
+
+        const rawCart = await AsyncStorage.getItem(CART_KEY);
+        if (rawCart) setCart(JSON.parse(rawCart));
+
+        const rawFavs = await AsyncStorage.getItem(FAV_KEY);
+        if (rawFavs) setFavorites(JSON.parse(rawFavs));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  // useEffect pour le filtrage des produits
-  useEffect(() => {
-    let filtered = products;
-    
-    if (user && user.type === 'farmer') {
-      filtered = filtered.filter(product => product.farmer_id === user.id);
-    }
-    
-    if (selectedCategory !== 'tous') {
-      filtered = filtered.filter(product => product.category === selectedCategory);
-    }
-    
-    if (selectedCity !== 'tous') {
-      filtered = filtered.filter(product => product.city === selectedCity);
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(product => 
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.farmer.toLowerCase().includes(searchTerm.toLowerCase())
+    // recherche locale (client side)
+  const filteredProducts = useMemo(() => {
+    const q = (searchTerm || '').trim().toLowerCase();
+    if (!q) return products || [];
+    return (products || []).filter((p) => {
+      const fields = [
+        p?.name, p?.title,
+        p?.category_name, p?.category,
+        p?.farmer_name, p?.farmer,
+        p?.farmer_location, p?.location,
+      ].filter(Boolean).map(String).map((s) => s.toLowerCase());
+      return fields.some((f) => f.includes(q));
+    });
+  }, [products, searchTerm]);
+
+  // ------- panier -------
+  const persistCart = (next) => AsyncStorage.setItem(CART_KEY, JSON.stringify(next)).catch(() => {});
+
+  const addToCart = (product, qty = 1) => {
+    setCart((c) => {
+      const i = c.findIndex((x) => x.product?.id === product.id);
+      const next = [...c];
+      if (i === -1) next.push({ product, quantity: qty });
+      else next[i] = { ...next[i], quantity: next[i].quantity + qty };
+      persistCart(next);
+      return next;
+    });
+    setNotifications((n) => [{ id: String(Date.now()), text: `Ajouté: ${product?.name || 'Produit'}`, read: false }, ...n]);
+  };
+
+  const updateCartQuantity = (productId, q) => {
+    setCart((c) => {
+      const next = c.map((it) =>
+        it.product?.id === productId ? { ...it, quantity: Math.max(1, Number(q) || 1) } : it
       );
-    }
-    
-    setFilteredProducts(filtered);
-  }, [searchTerm, selectedCategory, selectedCity, products, user]);
-
-  // Fonctions de navigation
-  const navigateToScreen = (screen) => {
-    if (currentScreen !== screen) {
-      setScreenHistory(prev => [...prev, currentScreen]);
-      setCurrentScreen(screen);
-    }
-  };
-
-  const goBack = () => {
-    if (screenHistory.length > 0) {
-      const previousScreen = screenHistory[screenHistory.length - 1];
-      setScreenHistory(prev => prev.slice(0, -1));
-      setCurrentScreen(previousScreen);
-    } else {
-      if (user) {
-        setCurrentScreen('home');
-      } else {
-        setCurrentScreen('welcome');
-      }
-    }
-  };
-
-  const goHome = () => {
-    if (user) {
-      setScreenHistory([]);
-      setCurrentScreen('home');
-      setSearchTerm('');
-      setSelectedCategory('tous');
-      setSelectedCity('tous');
-    } else {
-      setScreenHistory([]);
-      setCurrentScreen('welcome');
-    }
-  };
-
-  // Autres fonctions
-  const clearAllNotifications = () => {
-    setNotifications([]);
-    addNotification('🗑️ Toutes les notifications ont été effacées');
-  };
-
-  const logout = async () => {
-    setLoading(true);
-    try {
-      if (isOnline) {
-        await DatabaseService.logout();
-      }
-      
-      // Nettoyer l'état local
-      setUser(null);
-      setScreenHistory([]);
-      setCurrentScreen('welcome');
-      setCart([]);
-      setFavorites([]);
-      setSearchTerm('');
-      setSelectedCategory('tous');
-      setSelectedCity('tous');
-      setShowAddProduct(false);
-      setEditingProduct(null);
-      setShowOrderModal(false);
-      setOrderingProduct(null);
-      setOrders([]);
-      setProducts(initialProducts);
-      setFilteredProducts(initialProducts);
-      
-      addNotification('👋 À bientôt sur AgriConnect RCA!');
-      setIsOnline(true);
-      
-    } catch (error) {
-      console.error('Erreur déconnexion:', error);
-      // Déconnexion forcée même en cas d'erreur
-      setUser(null);
-      setCurrentScreen('welcome');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addProduct = async (productData) => {
-    setLoading(true);
-    try {
-      if (isOnline) {
-        const response = await DatabaseService.createProduct(productData);
-        if (response.success) {
-          await loadUserData();
-          addNotification(`✅ ${productData.name} ajouté avec succès!`);
-          setShowAddProduct(false);
-          return response;
-        }
-      }
-      
-      // Fallback mode hors ligne
-      const newProduct = {
-        ...productData,
-        id: Date.now(),
-        farmer_id: user.id,
-        farmer: user.name,
-        phone: user.phone,
-        location: user.location,
-        city: user.location.toLowerCase().includes('bangui') ? 'bangui' : 
-              user.location.toLowerCase().includes('bimbo') ? 'bimbo' :
-              user.location.toLowerCase().includes('begoua') ? 'begoua' :
-              user.location.toLowerCase().includes('bambari') ? 'bambari' :
-              user.location.toLowerCase().includes('bouar') ? 'bouar' : 'bangui',
-        rating: 0,
-        stock: parseInt(productData.stock) || parseInt(productData.quantity) || 0,
-        reviews: 0,
-        totalSold: 0,
-        price: parseInt(productData.price) || 0,
-        metadata: {
-          organic: productData.organic || false,
-          harvestDate: productData.harvestDate || productData.harvest_date || new Date().toISOString().split('T')[0],
-          description: productData.description || ''
-        }
-      };
-
-      setProducts(prev => [...prev, newProduct]);
-      addNotification(`✅ ${productData.name} ajouté avec succès! (Mode hors ligne)`);
-      setShowAddProduct(false);
-      
-    } catch (error) {
-      console.error('Erreur ajout produit:', error);
-      addNotification('❌ Erreur lors de l\'ajout du produit');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateProduct = (productId, updatedData) => {
-    setProducts(prev => prev.map(product => 
-      product.id === productId 
-        ? { 
-            ...product, 
-            ...updatedData, 
-            stock: parseInt(updatedData.quantity || updatedData.stock),
-            price: parseInt(updatedData.price)
-          }
-        : product
-    ));
-    addNotification(`✅ Produit modifié avec succès!`);
-    setEditingProduct(null);
-  };
-
-  const deleteProduct = (productId) => {
-    const product = products.find(p => p.id === productId);
-    if (product) {
-      Alert.alert(
-        "Confirmer la suppression",
-        `Êtes-vous sûr de vouloir supprimer "${product.name}" ?`,
-        [
-          { text: "Annuler", style: "cancel" },
-          { 
-            text: "Supprimer", 
-            style: "destructive",
-            onPress: () => {
-              setProducts(prev => prev.filter(p => p.id !== productId));
-              addNotification(`✅ ${product.name} supprimé`);
-            }
-          }
-        ]
-      );
-    }
-  };
-
-  const getUserOrders = () => {
-    if (!user) return [];
-    
-    if (user.type === 'farmer') {
-      return orders.filter(order => order.farmer_id === user.id);
-    } else if (user.type === 'buyer') {
-      return orders.filter(order => order.buyer_id === user.id);
-    } else if (user.type === 'admin') {
-      return orders;
-    }
-    return [];
-  };
-
-  const createOrder = (product, quantity = 1, deliveryAddress = '') => {
-    const newOrder = {
-      id: Date.now(),
-      buyer_id: user.id,
-      product_id: product.id,
-      farmer_id: product.farmer_id,
-      buyer_name: user.name,
-      farmer_name: product.farmer,
-      product_name: product.name,
-      quantity: quantity,
-      unit_price: product.price,
-      total: product.price * quantity,
-      status: 'pending',
-      delivery_address: deliveryAddress,
-      created_at: new Date().toISOString().split('T')[0]
-    };
-
-    setOrders(prev => [...prev, newOrder]);
-    addNotification(`✅ Commande de ${product.name} créée! Total: ${(product.price * quantity).toLocaleString()} FCFA`);
-    
-    setProducts(prev => prev.map(p => 
-      p.id === product.id 
-        ? { ...p, stock: Math.max(0, p.stock - quantity), totalSold: (p.totalSold || 0) + quantity }
-        : p
-    ));
-  };
-
-  const showOrderModalForProduct = (product) => {
-    setOrderingProduct(product);
-    setShowOrderModal(true);
-  };
-
-  const hideOrderModal = () => {
-    setShowOrderModal(false);
-    setOrderingProduct(null);
-  };
-
-  const handleOrderConfirm = (product, quantity, deliveryAddress) => {
-    createOrder(product, quantity, deliveryAddress);
-    hideOrderModal();
-  };
-
-  const addToCart = (product, quantity = 1) => {
-    const existingItem = cart.find(item => item.product.id === product.id);
-    
-    if (existingItem) {
-      setCart(prev => prev.map(item => 
-        item.product.id === product.id 
-          ? { ...item, quantity: item.quantity + quantity }
-          : item
-      ));
-      addNotification(`➕ ${product.name} ajouté au panier (${existingItem.quantity + quantity})`);
-    } else {
-      setCart(prev => [...prev, { product, quantity }]);
-      addNotification(`🛒 ${product.name} ajouté au panier`);
-    }
+      persistCart(next);
+      return next;
+    });
   };
 
   const removeFromCart = (productId) => {
-    const item = cart.find(item => item.product.id === productId);
-    if (item) {
-      setCart(prev => prev.filter(item => item.product.id !== productId));
-      addNotification(`❌ ${item.product.name} retiré du panier`);
-    }
-  };
-
-  const updateCartQuantity = (productId, newQuantity) => {
-    if (newQuantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
-    
-    setCart(prev => prev.map(item => 
-      item.product.id === productId 
-        ? { ...item, quantity: newQuantity }
-        : item
-    ));
-  };
-
-  const clearCart = () => {
-    setCart([]);
-    addNotification('🗑️ Panier vidé');
-  };
-
-  const checkout = () => {
-    if (cart.length === 0) return;
-    
-    cart.forEach(({ product, quantity }) => {
-      createOrder(product, quantity);
+    setCart((c) => {
+      const next = c.filter((it) => it.product?.id !== productId);
+      persistCart(next);
+      return next;
     });
-    
+  };
+
+  const clearCart = () => { setCart([]); persistCart([]); };
+
+  const checkout = async () => {
+    // Version AVANT CheckoutScreen: on simule la commande et on vide le panier
     clearCart();
-    navigateToScreen('orders');
-    addNotification('🎉 Commandes passées avec succès!');
+    setNotifications((n) => [{ id: String(Date.now()), text: 'Commande passée avec succès', read: false }, ...n]);
   };
 
-  const toggleFavorite = (productId) => {
-    setFavorites(prev => {
-      const isFavorite = prev.includes(productId);
-      const product = products.find(p => p.id === productId);
-      
-      if (isFavorite) {
-        addNotification(`💔 ${product?.name} retiré des favoris`);
-        return prev.filter(id => id !== productId);
-      } else {
-        addNotification(`❤️ ${product?.name} ajouté aux favoris`);
-        return [...prev, productId];
-      }
+  const getUserOrders = async () => {
+    try {
+      const r = await API.getOrders();
+      const arr = Array.isArray(r) ? r : (r?.data || []);
+      setOrders(arr);
+      return arr;
+    } catch (e) {
+      console.log('❌ getUserOrders:', e?.message);
+      return [];
+    }
+  };
+
+  // ------- auth -------
+  const handleLogin = async ({ phone, password }) => {
+    const res = await API.login({ phone, password });
+    setUser(res?.user || null);
+    setCurrentScreen('products');
+    await refetchProducts();
+    return res;
+  };
+  const handleRegister = async ({ name, phone, password, location, type }) => {
+    const res = await API.register({ name, phone, password, location, type });
+    setUser(res?.user || null);
+    setCurrentScreen('products');
+    await refetchProducts();
+    return res;
+  };
+  const logout = async () => {
+    await API.logout();
+    setUser(null);
+    setProducts([]);
+    setCart([]);
+    setFavorites([]);
+    setOrders([]);
+    setNotifications([]);
+    setCurrentScreen('welcome');
+    setScreenHistory([]);
+    await AsyncStorage.removeItem(NAV_KEY);
+  };
+
+    // ----- navigation -----
+  const navigateToScreen = (name) => {
+    setScreenHistory((h) => [...h, currentScreen]);
+    setCurrentScreen(name);
+    AsyncStorage.setItem(NAV_KEY, name).catch(() => {});
+  };
+
+  const goBack = () => {
+    setScreenHistory((h) => {
+      if (!h.length) { setCurrentScreen('home'); return []; }
+      const last = h[h.length - 1];
+      setCurrentScreen(last);
+      AsyncStorage.setItem(NAV_KEY, last).catch(() => {});
+      return h.slice(0, -1);
     });
   };
 
-  const getStats = () => {
-    if (!user) return {};
+  const goHome = () => navigateToScreen('home');
 
-    if (user.type === 'farmer') {
-      const myProducts = products.filter(p => p.farmer_id === user.id);
-      const myOrders = orders.filter(o => o.farmer_id === user.id);
-      const totalRevenue = myOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-      const totalSold = myProducts.reduce((sum, p) => sum + (p.totalSold || 0), 0);
-      const pendingOrders = myOrders.filter(o => o.status === 'pending').length;
-
-      return {
-        productsCount: myProducts.length,
-        ordersCount: myOrders.length,
-        totalRevenue,
-        totalSold,
-        pendingOrders
-      };
-    } else if (user.type === 'buyer') {
-      const myOrders = orders.filter(o => o.buyer_id === user.id);
-      const totalSpent = myOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-      
-      return {
-        ordersCount: myOrders.length,
-        totalSpent,
-        favoritesCount: favorites.length,
-        cartItemsCount: cart.length
-      };
-    } else if (user.type === 'admin') {
-      const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
-      const totalProducts = products.length;
-      const totalOrders = orders.length;
-      const totalFarmers = [...new Set(products.map(p => p.farmer_id))].length;
-      const pendingOrders = orders.filter(o => o.status === 'pending').length;
-
-      return {
-        totalProducts,
-        totalOrders,
-        totalRevenue,
-        totalFarmers,
-        pendingOrders
-      };
+  // ✅ AJOUT NOUVEAU : bouton "Suivant"
+  const goNext = () => {
+    const screens = [
+      'welcome', 'login', 'register', 'home',
+      'products', 'productDetails', 'cart',
+      'favorites', 'orders', 'notifications', 'settings',
+      'farmerDashboard', 'farmerProducts', 'salesHistory',
+      'adminDashboard', 'users'
+    ];
+    const idx = screens.indexOf(currentScreen);
+    if (idx >= 0 && idx < screens.length - 1) {
+      navigateToScreen(screens[idx + 1]);
     }
-
-    return {};
   };
 
-  const getCartTotal = () => {
-    return cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
-  };
 
-  const getCartItemsCount = () => {
-    return cart.reduce((total, item) => total + item.quantity, 0);
-  };
+  // ------- expose -------
+   return {
+  // état & nav
+  user, loading, currentScreen, screenHistory,
+  navigateToScreen, goBack, goHome, goNext,
 
-  // Debug des fonctions avant le return
-  console.log('🔍 Fonctions définies avant return:', {
-    handleRegister: typeof handleRegister,
-    handleLogin: typeof handleLogin
-  });
+  // catalogue
+  products, filteredProducts,
+  searchTerm, setSearchTerm,
+  selectedCategory, setSelectedCategory,   // 👈 doivent être là
+  selectedCity, setSelectedCity,           // 👈 doivent être là
+  refetchProducts,
+  
+  // actions produits
+  addProduct: async (p) => { const r = await API.addProduct(p); await refetchProducts(); return r; },
+  updateProduct: async (id, p) => { const r = await API.updateProduct(id, p); await refetchProducts(); return r; },
+  deleteProduct: async (id) => { const r = await API.deleteProduct(id); await refetchProducts(); return r; },
 
-  return {
-    // États
-    currentScreen,
-    user,
-    products,
-    filteredProducts,
-    orders,
-    searchTerm,
-    selectedCategory,
-    selectedCity,
-    notifications,
-    favorites,
-    showAddProduct,
-    editingProduct,
-    screenHistory,
-    categories,
-    cities,
-    cart,
-    showOrderModal,
-    orderingProduct,
-    loading,
-    isOnline,
-    
-    // Setters
-    setCurrentScreen,
-    setSearchTerm,
-    setSelectedCategory,
-    setSelectedCity,
-    setShowAddProduct,
-    setEditingProduct,
-    
-    // Actions de navigation
-    navigateToScreen,
-    goBack,
-    goHome,
-    
-    // Authentification
-    handleRegister,
-    handleLogin,
-    logout,
-    
-    // Notifications
-    addNotification,
-    clearAllNotifications,
-    
-    // Produits
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    
-    // Commandes
-    getUserOrders,
-    createOrder,
-    showOrderModalForProduct,
-    hideOrderModal,
-    handleOrderConfirm,
-    
-    // Panier
-    addToCart,
-    removeFromCart,
-    updateCartQuantity,
-    clearCart,
-    checkout,
-    
-    // Favoris
-    toggleFavorite,
-    
-    // Stats
-    getStats,
-    getCartTotal,
-    getCartItemsCount
-  };
+  // panier & commandes
+  cart, favorites, orders, notifications,
+  addToCart, updateCartQuantity, removeFromCart, clearCart,
+  checkout, getUserOrders,
+
+  // auth
+  handleLogin, handleRegister, logout,
+
+  // farmer
+  farmerProducts,
+  onSellProduct: farmerFeatures.sellProduct,
+  getFarmerStats, getRecentSales, getTopProducts,
+
+  // admin
+  users, refreshUsers, updateUser, toggleUserActive, deleteUser, resetUserPassword,
 };
+
+
+}
+
+export default useAgriConnect;

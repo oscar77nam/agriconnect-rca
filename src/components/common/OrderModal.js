@@ -1,202 +1,226 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  View,
+  Text,
+  Modal,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Image,
+  Alert,
+  ScrollView
+} from 'react-native';
 
 const OrderModal = ({ 
   visible, 
   product, 
   onClose, 
-  onConfirm, 
+  onConfirm,
   user 
 }) => {
-  const [quantity, setQuantity] = useState('1');
+  const [quantity, setQuantity] = useState(1);
   const [deliveryAddress, setDeliveryAddress] = useState(user?.location || '');
+  const [notes, setNotes] = useState('');
 
-  const numericQuantity = parseInt(quantity) || 0;
-  const totalPrice = numericQuantity * (product?.price || 0);
-  const isValidQuantity = numericQuantity > 0 && numericQuantity <= (product?.stock || 0);
+  if (!product) return null;
 
-  const handleConfirm = () => {
-    if (!isValidQuantity) {
-      Alert.alert('Erreur', 'Quantité invalide');
-      return;
+  const unitPrice = product.price || 0;
+  const totalPrice = unitPrice * quantity;
+  const maxStock = product.stock || 0;
+
+  const handleQuantityChange = (value) => {
+    const numValue = parseInt(value) || 1;
+    if (numValue > 0 && numValue <= maxStock) {
+      setQuantity(numValue);
+    } else if (numValue > maxStock) {
+      Alert.alert('Stock insuffisant', `Maximum disponible: ${maxStock} ${product.unit || 'kg'}`);
     }
-    
-    if (!deliveryAddress.trim()) {
-      Alert.alert('Erreur', 'Adresse de livraison requise');
-      return;
-    }
-
-    Alert.alert(
-      'Confirmer la commande',
-      `Êtes-vous sûr de vouloir commander ${numericQuantity} kg de ${product?.name} pour ${totalPrice.toLocaleString()} FCFA ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Confirmer', 
-          onPress: () => {
-            onConfirm(product, numericQuantity, deliveryAddress);
-            handleClose();
-          }
-        }
-      ]
-    );
-  };
-
-  const handleClose = () => {
-    setQuantity('1');
-    setDeliveryAddress(user?.location || '');
-    onClose();
   };
 
   const incrementQuantity = () => {
-    const newQuantity = numericQuantity + 1;
-    if (newQuantity <= (product?.stock || 0)) {
-      setQuantity(newQuantity.toString());
+    if (quantity < maxStock) {
+      setQuantity(prev => prev + 1);
+    } else {
+      Alert.alert('Stock insuffisant', `Maximum disponible: ${maxStock} ${product.unit || 'kg'}`);
     }
   };
 
   const decrementQuantity = () => {
-    if (numericQuantity > 1) {
-      setQuantity((numericQuantity - 1).toString());
+    if (quantity > 1) {
+      setQuantity(prev => prev - 1);
     }
   };
 
-  if (!product) return null;
+  const handleConfirm = () => {
+    if (!deliveryAddress.trim()) {
+      Alert.alert('Adresse requise', 'Veuillez saisir une adresse de livraison');
+      return;
+    }
+
+    if (quantity <= 0 || quantity > maxStock) {
+      Alert.alert('Quantité invalide', `Veuillez choisir entre 1 et ${maxStock} ${product.unit || 'kg'}`);
+      return;
+    }
+
+    onConfirm({
+      product,
+      quantity,
+      deliveryAddress: deliveryAddress.trim(),
+      notes: notes.trim(),
+      unitPrice,
+      totalPrice
+    });
+
+    // Reset du formulaire
+    setQuantity(1);
+    setDeliveryAddress(user?.location || '');
+    setNotes('');
+  };
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('fr-CF', {
+      minimumFractionDigits: 0
+    }).format(price);
+  };
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      transparent={true}
-      onRequestClose={handleClose}
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>📦 Passer commande</Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#374151" />
-            </TouchableOpacity>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>📦 Commander</Text>
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Informations produit */}
+          <View style={styles.productCard}>
+            <View style={styles.productImageContainer}>
+              {product.image_url ? (
+                <Image source={{ uri: product.image_url }} style={styles.productImage} />
+              ) : (
+                <View style={styles.productImagePlaceholder}>
+                  <Text style={styles.productImageEmoji}>🌾</Text>
+                </View>
+              )}
+              {product.organic && (
+                <View style={styles.organicBadge}>
+                  <Text style={styles.organicBadgeText}>🌱 BIO</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.productInfo}>
+              <Text style={styles.productName}>{product.name}</Text>
+              <Text style={styles.productCategory}>{product.category}</Text>
+              <Text style={styles.farmerInfo}>👨‍🌾 {product.farmer || product.farmer_name}</Text>
+              <Text style={styles.locationInfo}>📍 {product.location || product.farmer_location}</Text>
+              <Text style={styles.stockInfo}>Stock disponible: {maxStock} {product.unit || 'kg'}</Text>
+            </View>
           </View>
 
-          {/* Produit */}
-          <View style={styles.productSection}>
-            <View style={styles.productInfo}>
-              <Text style={styles.productEmoji}>{product.image}</Text>
-              <View style={styles.productDetails}>
-                <Text style={styles.productName}>{product.name}</Text>
-                <Text style={styles.farmerName}>Par {product.farmer}</Text>
-                <View style={styles.priceContainer}>
-                  <Text style={styles.unitPrice}>
-                    {product.price.toLocaleString()} FCFA/kg
-                  </Text>
-                  <Text style={styles.stockInfo}>
-                    Stock: {product.stock} kg
-                  </Text>
-                </View>
+          {/* Sélection de quantité */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Quantité</Text>
+            
+            <View style={styles.quantityContainer}>
+              <TouchableOpacity 
+                style={[styles.quantityButton, quantity <= 1 ? styles.quantityButtonDisabled : null]}
+                onPress={decrementQuantity}
+                disabled={quantity <= 1}
+              >
+                <Text style={styles.quantityButtonText}>-</Text>
+              </TouchableOpacity>
+              
+              <TextInput
+                style={styles.quantityInput}
+                value={quantity.toString()}
+                onChangeText={handleQuantityChange}
+                keyboardType="numeric"
+                textAlign="center"
+              />
+              
+              <TouchableOpacity 
+                style={[styles.quantityButton, quantity >= maxStock ? styles.quantityButtonDisabled : null]}
+                onPress={incrementQuantity}
+                disabled={quantity >= maxStock}
+              >
+                <Text style={styles.quantityButtonText}>+</Text>
+              </TouchableOpacity>
+              
+              <Text style={styles.unitText}>{product.unit || 'kg'}</Text>
+            </View>
+
+            {/* Calcul des prix */}
+            <View style={styles.priceCalculation}>
+              <View style={styles.priceRow}>
+                <Text style={styles.priceLabel}>Prix unitaire:</Text>
+                <Text style={styles.priceValue}>{formatPrice(unitPrice)} FCFA / {product.unit || 'kg'}</Text>
+              </View>
+              <View style={styles.priceRow}>
+                <Text style={styles.priceLabel}>Quantité:</Text>
+                <Text style={styles.priceValue}>{quantity} {product.unit || 'kg'}</Text>
+              </View>
+              <View style={[styles.priceRow, styles.totalRow]}>
+                <Text style={styles.totalLabel}>Total:</Text>
+                <Text style={styles.totalValue}>{formatPrice(totalPrice)} FCFA</Text>
               </View>
             </View>
           </View>
 
-          {/* Quantité */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Quantité (kg)</Text>
-            <View style={styles.quantityContainer}>
-              <TouchableOpacity
-                onPress={decrementQuantity}
-                style={[styles.quantityButton, numericQuantity <= 1 && styles.quantityButtonDisabled]}
-                disabled={numericQuantity <= 1}
-              >
-                <Ionicons name="remove" size={20} color={numericQuantity <= 1 ? '#9ca3af' : '#374151'} />
-              </TouchableOpacity>
-              
-              <TextInput
-                style={[styles.quantityInput, !isValidQuantity && styles.quantityInputError]}
-                value={quantity}
-                onChangeText={setQuantity}
-                keyboardType="numeric"
-                selectTextOnFocus
-              />
-              
-              <TouchableOpacity
-                onPress={incrementQuantity}
-                style={[styles.quantityButton, numericQuantity >= product.stock && styles.quantityButtonDisabled]}
-                disabled={numericQuantity >= product.stock}
-              >
-                <Ionicons name="add" size={20} color={numericQuantity >= product.stock ? '#9ca3af' : '#374151'} />
-              </TouchableOpacity>
-            </View>
-            
-            {!isValidQuantity && (
-              <Text style={styles.errorText}>
-                Quantité doit être entre 1 et {product.stock} kg
-              </Text>
-            )}
-          </View>
-
           {/* Adresse de livraison */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Adresse de livraison</Text>
+            <Text style={styles.sectionTitle}>Adresse de livraison *</Text>
             <TextInput
               style={styles.addressInput}
               value={deliveryAddress}
               onChangeText={setDeliveryAddress}
-              placeholder="Entrez votre adresse de livraison"
+              placeholder="Ex: PK5, Bangui"
               multiline
+              numberOfLines={2}
             />
           </View>
 
-          {/* Récapitulatif */}
-          <View style={styles.summarySection}>
-            <Text style={styles.summaryTitle}>📋 Récapitulatif</Text>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Produit:</Text>
-              <Text style={styles.summaryValue}>{product.name}</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Prix unitaire:</Text>
-              <Text style={styles.summaryValue}>{product.price.toLocaleString()} FCFA/kg</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Quantité:</Text>
-              <Text style={styles.summaryValue}>{numericQuantity} kg</Text>
-            </View>
-            
-            <View style={styles.summaryDivider} />
-            
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total à payer:</Text>
-              <Text style={styles.totalValue}>
-                {totalPrice.toLocaleString()} FCFA
-              </Text>
-            </View>
+          {/* Notes optionnelles */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notes (optionnel)</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Instructions spéciales, heure de livraison préférée..."
+              multiline
+              numberOfLines={3}
+            />
           </View>
 
-          {/* Actions */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              onPress={handleClose}
-              style={styles.cancelButton}
-            >
-              <Text style={styles.cancelButtonText}>Annuler</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              onPress={handleConfirm}
-              style={[styles.confirmButton, !isValidQuantity && styles.confirmButtonDisabled]}
-              disabled={!isValidQuantity}
-            >
-              <Ionicons name="card" size={20} color="white" />
-              <Text style={styles.confirmButtonText}>
-                Commander ({totalPrice.toLocaleString()} FCFA)
-              </Text>
-            </TouchableOpacity>
+          {/* Informations de livraison */}
+          <View style={styles.deliveryInfo}>
+            <Text style={styles.deliveryInfoTitle}>ℹ️ Informations de livraison</Text>
+            <Text style={styles.deliveryInfoText}>• Livraison sous 24-48h</Text>
+            <Text style={styles.deliveryInfoText}>• Paiement à la livraison</Text>
+            <Text style={styles.deliveryInfoText}>• Vous serez contacté pour confirmer</Text>
           </View>
+        </ScrollView>
+
+        {/* Boutons d'action */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+            <Text style={styles.cancelButtonText}>Annuler</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
+            <Text style={styles.confirmButtonText}>
+              Commander • {formatPrice(totalPrice)} FCFA
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -204,78 +228,115 @@ const OrderModal = ({
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
+    backgroundColor: '#f9fafb',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingTop: 60,
+    backgroundColor: '#16a34a',
   },
-  title: {
+  headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: 'white',
   },
   closeButton: {
-    padding: 4,
-    borderRadius: 20,
-  },
-  productSection: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  productInfo: {
-    flexDirection: 'row',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  productEmoji: {
-    fontSize: 50,
-    marginRight: 16,
+  closeButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  productDetails: {
+  content: {
     flex: 1,
+    padding: 20,
+  },
+  productCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  productImageContainer: {
+    height: 120,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 16,
+    position: 'relative',
+  },
+  productImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  productImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f3f4f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productImageEmoji: {
+    fontSize: 40,
+  },
+  organicBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: '#16a34a',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  organicBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  productInfo: {
+    gap: 4,
   },
   productName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
+    color: '#374151',
   },
-  farmerName: {
+  productCategory: {
+    fontSize: 14,
+    color: '#16a34a',
+    fontWeight: '600',
+  },
+  farmerInfo: {
     fontSize: 14,
     color: '#6b7280',
-    marginBottom: 8,
   },
-  priceContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  unitPrice: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2563eb',
+  locationInfo: {
+    fontSize: 14,
+    color: '#6b7280',
   },
   stockInfo: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#f59e0b',
+    fontWeight: '600',
   },
   section: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
@@ -286,129 +347,140 @@ const styles = StyleSheet.create({
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 16,
   },
   quantityButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    backgroundColor: '#16a34a',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   quantityButtonDisabled: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#d1d5db',
   },
-  quantityInput: {
-    width: 80,
-    height: 44,
-    borderWidth: 2,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    textAlign: 'center',
+  quantityButtonText: {
+    color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
-    backgroundColor: 'white',
   },
-  quantityInputError: {
-    borderColor: '#dc2626',
-  },
-  errorText: {
-    color: '#dc2626',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  addressInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#f9fafb',
-    textAlignVertical: 'top',
-    minHeight: 60,
-  },
-  summarySection: {
-    padding: 20,
-    backgroundColor: '#f9fafb',
-  },
-  summaryTitle: {
+  quantityInput: {
+    flex: 1,
+    height: 40,
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 12,
   },
-  summaryRow: {
+  unitText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginLeft: 8,
+  },
+  priceCalculation: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 16,
+  },
+  priceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  summaryLabel: {
+  priceLabel: {
     fontSize: 14,
     color: '#6b7280',
   },
-  summaryValue: {
+  priceValue: {
     fontSize: 14,
-    fontWeight: '500',
     color: '#374151',
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: '#d1d5db',
-    marginVertical: 12,
+    fontWeight: '500',
   },
   totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 8,
+    marginTop: 8,
+    marginBottom: 0,
   },
   totalLabel: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#374151',
   },
   totalValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#16a34a',
   },
-  footer: {
+  addressInput: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 16,
+    minHeight: 50,
+    textAlignVertical: 'top',
+  },
+  notesInput: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 16,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  deliveryInfo: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 8,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+  },
+  deliveryInfoTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#92400e',
+    marginBottom: 8,
+  },
+  deliveryInfoText: {
+    fontSize: 13,
+    color: '#92400e',
+    marginBottom: 4,
+  },
+  actionButtons: {
     flexDirection: 'row',
     padding: 20,
+    paddingBottom: 40,
     gap: 12,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
   },
   cancelButton: {
     flex: 1,
+    backgroundColor: '#6b7280',
+    borderRadius: 8,
     padding: 16,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
     alignItems: 'center',
   },
   cancelButtonText: {
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
   },
   confirmButton: {
     flex: 2,
     backgroundColor: '#16a34a',
+    borderRadius: 8,
     padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  confirmButtonDisabled: {
-    backgroundColor: '#d1d5db',
   },
   confirmButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
     color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

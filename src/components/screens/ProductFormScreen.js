@@ -1,4 +1,4 @@
-// src/components/common/ProductForm.js
+// src/components/screens/ProductFormScreen.js
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -14,8 +14,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import Header from './Header'; // <-- tu es dans components/common/
-import API from '../../AgriConnectRCA';
+import Header from '../common/Header';
+import API from '../../services/AgriConnectRCA';
 
 function guessNameFromUri(uri) {
   try {
@@ -34,14 +34,14 @@ function guessMimeFromUri(uri) {
   return 'image/jpeg';
 }
 
-export default function ProductForm({
+export default function ProductFormScreen({
   user,
-  // si tu viens en mode édition, passe { product } quand tu navigues
+  // si tu viens en mode édition, passe { product } via onNavigate('productForm', { product })
   product = null,
 
-  // callbacks optionnels (si déjà branchés dans App)
-  onAddProduct,
-  onUpdateProduct,
+  // callbacks (optionnels) pour mettre à jour la liste déjà chargée côté app
+  onAddProduct,     // async (payload) => créé côté store + refresh list
+  onUpdateProduct,  // async (payload) => met à jour côté store + refresh list
 
   onBack,
   onHome,
@@ -60,13 +60,14 @@ export default function ProductForm({
 
   // image
   const [imageUrl, setImageUrl] = useState(product?.image_url || '');
-  const [imageEmoji, setImageEmoji] = useState(product?.image || '🌾'); // fallback affichage
+  const [imageEmoji, setImageEmoji] = useState(product?.image || '🌾'); // fallback si pas d’URL
   const [uploading, setUploading] = useState(false);
 
   // metadata simples
   const [organic, setOrganic] = useState(!!product?.metadata?.organic);
   const [harvestDate, setHarvestDate] = useState(product?.metadata?.harvestDate || '');
 
+  // UX
   const [saving, setSaving] = useState(false);
 
   const canSave = useMemo(() => {
@@ -84,6 +85,7 @@ export default function ProductForm({
           return;
         }
       }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.9,
@@ -99,11 +101,12 @@ export default function ProductForm({
       const name = guessNameFromUri(asset.uri);
       const type = asset.mimeType || guessMimeFromUri(asset.uri);
 
-      // upload vers l'API
+      // upload immédiat à l'API
       const resp = await API.upload.image({ uri: asset.uri, name, type });
       if (!resp?.url) throw new Error("L'API upload n'a pas renvoyé d'URL");
 
       setImageUrl(resp.url);
+      // pour l’aperçu si tu veux
       setImageEmoji('🖼️');
       Alert.alert('Image', 'Image téléchargée avec succès.');
     } catch (e) {
@@ -136,22 +139,31 @@ export default function ProductForm({
       };
 
       if (isEdit) {
-        const id = product.id;
+        // EDITION
+        const finalId = product.id;
         if (onUpdateProduct) {
-          await onUpdateProduct({ id, ...payload });
+          await onUpdateProduct({ id: finalId, ...payload });
         } else {
-          await API.products.update(id, payload);
+          await API.products.update(finalId, payload);
         }
         Alert.alert('Succès', 'Produit mis à jour.');
       } else {
+        // CREATION
+        let created;
         if (onAddProduct) {
-          await onAddProduct(payload);
+          created = await onAddProduct(payload);
         } else {
-          await API.products.create(payload);
+          created = await API.products.create(payload);
         }
-        Alert.alert('Succès', 'Produit créé.');
+        if (!created?.id) {
+          // au pire, navigue quand même
+          Alert.alert('Info', 'Produit créé.');
+        } else {
+          Alert.alert('Succès', 'Produit créé.');
+        }
       }
 
+      // Direction tableau de bord agriculteur si c’est un farmer
       if (user?.type === 'farmer') onNavigate?.('farmerProducts');
       else onNavigate?.('products');
     } catch (e) {
@@ -181,6 +193,7 @@ export default function ProductForm({
           <View style={styles.imageRow}>
             <View style={styles.preview}>
               {imageUrl ? (
+                // tu peux remplacer ce bloc par un <Image> si tu préfères afficher l'URL
                 <Text style={styles.previewText}>Image chargée ✅</Text>
               ) : (
                 <Text style={styles.previewEmoji}>{imageEmoji || '🌾'}</Text>

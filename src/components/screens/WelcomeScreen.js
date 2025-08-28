@@ -2,6 +2,19 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 const WelcomeScreen = ({ onNavigate }) => {
+  // Fonction de navigation sécurisée avec debug
+  const handleNavigate = (screen) => {
+    console.log('WelcomeScreen - Tentative navigation vers:', screen);
+    console.log('WelcomeScreen - Type de onNavigate:', typeof onNavigate);
+    
+    if (onNavigate && typeof onNavigate === 'function') {
+      onNavigate(screen);
+    } else {
+      console.error('❌ WelcomeScreen: onNavigate n\'est pas une fonction!');
+      console.log('Props reçues:', { onNavigate });
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -12,16 +25,20 @@ const WelcomeScreen = ({ onNavigate }) => {
         
         <View style={styles.tagsContainer}>
           <View style={styles.tag}>
-            <Text style={styles.tagText}>🥔 Manioc</Text>
+            <Text style={styles.tagEmoji}>🥔</Text>
+            <Text style={styles.tagText}>Manioc</Text>
           </View>
           <View style={styles.tag}>
-            <Text style={styles.tagText}>🌽 Maïs</Text>
+            <Text style={styles.tagEmoji}>🥬</Text>
+            <Text style={styles.tagText}>Légumes</Text>
           </View>
           <View style={styles.tag}>
-            <Text style={styles.tagText}>🥬 Légumes</Text>
+            <Text style={styles.tagEmoji}>🥭</Text>
+            <Text style={styles.tagText}>Fruits</Text>
           </View>
           <View style={styles.tag}>
-            <Text style={styles.tagText}>🍅 Fruits</Text>
+            <Text style={styles.tagEmoji}>🌾</Text>
+            <Text style={styles.tagText}>Céréales</Text>
           </View>
         </View>
         
@@ -44,14 +61,14 @@ const WelcomeScreen = ({ onNavigate }) => {
       <View style={styles.buttonContainer}>
         <TouchableOpacity 
           style={styles.loginButton}
-          onPress={() => onNavigate('login')}
+          onPress={() => handleNavigate('login')}
         >
           <Text style={styles.loginButtonText}>🔐 Se connecter</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.button}
-          onPress={() => onNavigate('register')}
+          onPress={() => handleNavigate('register')}
         >
           <Text style={styles.buttonText}>🚀 Créer un compte</Text>
         </TouchableOpacity>
@@ -120,15 +137,29 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   tag: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  tagEmoji: {
+    fontSize: 20,
+    marginRight: 8,
   },
   tagText: {
-    color: 'white',
+    color: '#16a34a',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   featuresContainer: {
     flexDirection: 'row',

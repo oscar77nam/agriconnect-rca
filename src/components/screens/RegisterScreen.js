@@ -1,459 +1,466 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  FlatList,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Header from '../common/Header';
-import { cities } from '../../data/constants';
+import API from '../../AgriConnectRCA';
 
-const RegisterScreen = ({ 
-  onRegister, 
-  onBack, 
-  onHome, 
+// Fallback local si l'API n'est pas dispo
+const DEFAULT_CITIES = [
+  'Bangui', 'Bimbo', 'Bégoua', 'Berbérati', 'Bossangoa', 'Bouar', 'Carnot',
+  'Bambari', 'Bria', 'Kaga-Bandoro', 'Mbaïki', 'Sibut', 'Nola', 'Bangassou',
+  'Birao', 'Paoua', 'Bozoum', 'Obo', 'Yaloké', 'Boda', 'Kouango'
+];
+
+const TypePill = ({ label, selected, onPress, icon }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    style={[
+      styles.typePill,
+      selected ? styles.typePillActive : styles.typePillInactive,
+    ]}
+  >
+    <Ionicons
+      name={icon}
+      size={14}
+      color={selected ? '#fff' : '#374151'}
+      style={{ marginRight: 6 }}
+    />
+    <Text style={[styles.typePillText, selected && { color: '#fff' }]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const RegisterScreen = ({
+  onRegister,          // fournie par App -> useAgriConnect.handleRegister
+  onBack,
+  onHome,
   onNavigate,
-  screenHistory, 
-  currentScreen, 
-  user,
-  loading = false
+  screenHistory,
+  currentScreen,
 }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    location: '',
-    type: ''
-  });
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [locationQuery, setLocationQuery] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [locationType, setLocationType] = useState('city'); // 'city' | 'village' | 'quarter'
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingLoc, setLoadingLoc] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
 
-  const [errors, setErrors] = useState({});
+  const [role, setRole] = useState('buyer'); // buyer | farmer
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
-  const validateForm = () => {
-    const newErrors = {};
-    
-    if (!formData.name.trim()) {
-      newErrors.name = 'Le nom est obligatoire';
-    } else if (formData.name.trim().length < 2) {
-      newErrors.name = 'Le nom doit contenir au moins 2 caractères';
-    }
-    
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Le numéro de téléphone est obligatoire';
-    } else if (!/^\+236\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/.test(formData.phone.replace(/\s/g, ''))) {
-      newErrors.phone = 'Format: +236 70 12 34 56';
-    }
-    
-    if (!formData.location) {
-      newErrors.location = 'Veuillez sélectionner une ville';
-    }
-    
-    if (!formData.type) {
-      newErrors.type = 'Veuillez sélectionner votre profil';
-    }
+  const inputRef = useRef(null);
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  // Recherche insensible à la casse côté front + appel API quand dispo
+  const fetchSuggestions = async (q) => {
+    const query = (q || '').trim();
+    if (!query) {
+      // petit set de base
+      setSuggestions(DEFAULT_CITIES.map(n => ({ id: n, name: n, type: 'city' })));
+      return;
+    }
+    setLoadingLoc(true);
+    try {
+      const res = await API.searchLocations(query);
+      // si l'API répond, on l’utilise
+      if (Array.isArray(res?.data)) {
+        setSuggestions(res.data);
+      } else {
+        // fallback client
+        const arr = DEFAULT_CITIES
+          .filter((c) => c.toLowerCase().includes(query.toLowerCase()))
+          .map(n => ({ id: n, name: n, type: 'city' }));
+        setSuggestions(arr);
+      }
+    } catch {
+      // fallback client silencieux
+      const arr = DEFAULT_CITIES
+        .filter((c) => c.toLowerCase().includes(query.toLowerCase()))
+        .map(n => ({ id: n, name: n, type: 'city' }));
+      setSuggestions(arr);
+    } finally {
+      setLoadingLoc(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSuggestions(locationQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationQuery]);
+
+  const notFound = useMemo(() => {
+    const q = (locationQuery || '').trim().toLowerCase();
+    if (!q) return false;
+    return !(suggestions || []).some(
+      (s) => (s?.name || '').toLowerCase() === q
+    );
+  }, [suggestions, locationQuery]);
+
+  const pickSuggestion = (s) => {
+    setSelectedLocation(s);
+    setLocationQuery(s?.name || '');
+    setShowDropdown(false);
+  };
+
+  const addNewLocation = async () => {
+    const q = (locationQuery || '').trim();
+    if (!q) {
+      Alert.alert('Ville/Localité', 'Veuillez saisir un nom de localité.');
+      return;
+    }
+    try {
+      const created = await API.createLocation({
+        name: q,
+        type: locationType, // 'city' | 'village' | 'quarter'
+      });
+      // API renvoie { success, data }
+      const loc = created?.data || { id: q, name: q, type: locationType };
+      setSelectedLocation(loc);
+      setLocationQuery(loc.name);
+      setShowDropdown(false);
+      Alert.alert('Localité ajoutée', `“${loc.name}” a été ajoutée avec succès.`);
+    } catch (e) {
+      const msg = e?.message || 'Impossible d’ajouter la localité.';
+      Alert.alert('Erreur', msg);
+    }
   };
 
   const handleSubmit = async () => {
-    if (validateForm()) {
-      try {
-        await onRegister(formData);
-      } catch (error) {
-        Alert.alert('Erreur', 'Impossible de créer le compte');
-      }
-    } else {
-      Alert.alert('Erreur', 'Veuillez corriger les erreurs dans le formulaire');
+    if (!name?.trim() || !phone?.trim() || !password?.trim() || !confirm?.trim()) {
+      Alert.alert('Champs requis', 'Merci de renseigner tous les champs.');
+      return;
     }
-  };
+    if (password.length < 6) {
+      Alert.alert('Mot de passe', 'Au moins 6 caractères.');
+      return;
+    }
+    if (password !== confirm) {
+      Alert.alert('Confirmation', 'Les mots de passe ne correspondent pas.');
+      return;
+    }
 
-  const formatPhoneNumber = (text) => {
-    // Auto-format phone number
-    let cleaned = text.replace(/\D/g, '');
-    if (cleaned.startsWith('236')) {
-      cleaned = '+' + cleaned;
-    } else if (!cleaned.startsWith('+236') && cleaned.length > 0) {
-      cleaned = '+236' + cleaned;
-    }
-    
-    // Format: +236 70 12 34 56
-    if (cleaned.length > 4) {
-      cleaned = cleaned.slice(0, 4) + ' ' + cleaned.slice(4);
-    }
-    if (cleaned.length > 7) {
-      cleaned = cleaned.slice(0, 7) + ' ' + cleaned.slice(7);
-    }
-    if (cleaned.length > 10) {
-      cleaned = cleaned.slice(0, 10) + ' ' + cleaned.slice(10);
-    }
-    if (cleaned.length > 13) {
-      cleaned = cleaned.slice(0, 13) + ' ' + cleaned.slice(13);
-    }
-    
-    return cleaned;
-  };
+    const location =
+      selectedLocation?.name ||
+      (locationQuery?.trim() || '');
 
-  const handlePhoneChange = (text) => {
-    const formatted = formatPhoneNumber(text);
-    setFormData({...formData, phone: formatted});
-    if (errors.phone) {
-      setErrors(prev => ({...prev, phone: null}));
+    try {
+      await onRegister?.({
+        name: name.trim(),
+        phone: phone.trim(),
+        password,
+        confirmPassword: confirm,
+        location,
+        type: role,
+      });
+    } catch (e) {
+      Alert.alert('Inscription', e?.message || 'Échec de l’inscription.');
     }
   };
 
   return (
     <View style={styles.container}>
-      <Header 
-        title="📱 Inscription"
-        onBack={() => onNavigate('welcome')}
-        onHome={() => onNavigate('welcome')}
+      <Header
+        title="Créer un compte"
+        onBack={onBack}
+        onHome={onHome}
         screenHistory={screenHistory}
         currentScreen={currentScreen}
-        user={user}
       />
-      
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.emoji}>🌾</Text>
-          <Text style={styles.title}>Rejoignez AgriConnect</Text>
-          <Text style={styles.subtitle}>La plateforme agricole de RCA</Text>
+
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
+        <Text style={styles.title}>Bienvenue 👋</Text>
+        <Text style={styles.subtitle}>Rejoignez le marketplace AgriConnect RCA</Text>
+
+        {/* Nom */}
+        <View style={styles.inputGroup}>
+          <Ionicons name="person" size={18} color="#9ca3af" />
+          <TextInput
+            placeholder="Nom complet"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+          />
         </View>
 
-        <View style={styles.form}>
-          {/* Sélection du profil */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Je suis...</Text>
-            
-            <TouchableOpacity
-              onPress={() => {
-                setFormData({...formData, type: 'farmer'});
-                if (errors.type) setErrors(prev => ({...prev, type: null}));
-              }}
-              style={[
-                styles.profileButton,
-                formData.type === 'farmer' && styles.profileButtonActive,
-                errors.type && !formData.type && styles.profileButtonError
-              ]}
-            >
-              <Text style={styles.profileEmoji}>👨‍🌾</Text>
-              <View style={styles.profileContent}>
-                <Text style={[
-                  styles.profileTitle,
-                  formData.type === 'farmer' && styles.profileTitleActive
-                ]}>
-                  Agriculteur
-                </Text>
-                <Text style={styles.profileDescription}>
-                  Je vends mes produits agricoles
-                </Text>
-                <Text style={styles.profileSango}>⭐ Mbi ka kobe ⭐</Text>
-              </View>
-            </TouchableOpacity>
+        {/* Téléphone */}
+        <View style={styles.inputGroup}>
+          <Ionicons name="call" size={18} color="#9ca3af" />
+          <TextInput
+            placeholder="Ex: 0651890061"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            style={styles.input}
+          />
+        </View>
 
-            <TouchableOpacity
-              onPress={() => {
-                setFormData({...formData, type: 'buyer'});
-                if (errors.type) setErrors(prev => ({...prev, type: null}));
-              }}
-              style={[
-                styles.profileButton,
-                formData.type === 'buyer' && styles.profileButtonActiveBuyer,
-                errors.type && !formData.type && styles.profileButtonError
-              ]}
-            >
-              <Text style={styles.profileEmoji}>🛒</Text>
-              <View style={styles.profileContent}>
-                <Text style={[
-                  styles.profileTitle,
-                  formData.type === 'buyer' && styles.profileTitleActiveBuyer
-                ]}>
-                  Acheteur
-                </Text>
-                <Text style={styles.profileDescription}>
-                  J'achète des produits frais
-                </Text>
-                <Text style={styles.profileSango}>⭐ Mbi vo kobe ⭐</Text>
-              </View>
-            </TouchableOpacity>
+        {/* Ville / Localité (recherche + ajout) */}
+        <View style={{ marginBottom: 8 }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => { setShowDropdown(true); inputRef.current?.focus?.(); }}
+            style={[styles.inputGroup, { borderBottomLeftRadius: showDropdown ? 0 : 12, borderBottomRightRadius: showDropdown ? 0 : 12 }]}
+          >
+            <Ionicons name="location" size={18} color="#9ca3af" />
+            <TextInput
+              ref={inputRef}
+              placeholder="Votre ville / localité"
+              value={locationQuery}
+              onChangeText={(t) => { setLocationQuery(t); setSelectedLocation(null); }}
+              onFocus={() => setShowDropdown(true)}
+              style={styles.input}
+            />
+            <Ionicons name={showDropdown ? 'chevron-up' : 'chevron-down'} size={18} color="#9ca3af" />
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => {
-                setFormData({...formData, type: 'admin'});
-                if (errors.type) setErrors(prev => ({...prev, type: null}));
-              }}
-              style={[
-                styles.profileButton,
-                formData.type === 'admin' && styles.profileButtonActiveAdmin,
-                errors.type && !formData.type && styles.profileButtonError
-              ]}
-            >
-              <Text style={styles.profileEmoji}>👑</Text>
-              <View style={styles.profileContent}>
-                <Text style={[
-                  styles.profileTitle,
-                  formData.type === 'admin' && styles.profileTitleActiveAdmin
-                ]}>
-                  Administrateur
-                </Text>
-                <Text style={styles.profileDescription}>
-                  Je gère la plateforme
-                </Text>
-                <Text style={styles.profileSango}>⭐ Mbi bembe ndo ⭐</Text>
-              </View>
-            </TouchableOpacity>
-            
-            {errors.type && <Text style={styles.errorText}>{errors.type}</Text>}
-          </View>
-
-          {/* Informations personnelles */}
-          <View style={styles.inputSection}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Nom complet *</Text>
-              <TextInput
-                style={[styles.input, errors.name && styles.inputError]}
-                placeholder="Entrez votre nom complet"
-                value={formData.name}
-                onChangeText={(text) => {
-                  setFormData({...formData, name: text});
-                  if (errors.name) {
-                    setErrors(prev => ({...prev, name: null}));
+          {showDropdown && (
+            <View style={styles.dropdown}>
+              {loadingLoc ? (
+                <View style={styles.dropdownItem}>
+                  <Ionicons name="sync" size={16} color="#9ca3af" />
+                  <Text style={styles.dropdownText}>Recherche…</Text>
+                </View>
+              ) : (suggestions || []).length > 0 ? (
+                <FlatList
+                  keyboardShouldPersistTaps="handled"
+                  data={suggestions}
+                  keyExtractor={(item, idx) => item?.id || `${item?.name}-${idx}`}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => pickSuggestion(item)}
+                      style={styles.dropdownItem}
+                    >
+                      <Ionicons name="pin" size={16} color="#16a34a" />
+                      <Text style={styles.dropdownText}>{item?.name}</Text>
+                      <View style={styles.badgeType}>
+                        <Text style={styles.badgeTypeText}>
+                          {item?.type === 'city' ? 'Ville' : item?.type === 'village' ? 'Village' : 'Quartier'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.dropdownItem}>
+                      <Text style={styles.dropdownTextMuted}>Aucune localité</Text>
+                    </View>
                   }
-                }}
-                autoCapitalize="words"
-              />
-              {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
-            </View>
+                />
+              ) : (
+                <View style={styles.dropdownItem}>
+                  <Text style={styles.dropdownTextMuted}>Aucune localité</Text>
+                </View>
+              )}
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Numéro de téléphone *</Text>
-              <TextInput
-                style={[styles.input, errors.phone && styles.inputError]}
-                placeholder="+236 70 12 34 56"
-                value={formData.phone}
-                onChangeText={handlePhoneChange}
-                keyboardType="phone-pad"
-                maxLength={16}
-              />
-              {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-            </View>
+              {/* Bloc ajout si introuvable */}
+              {notFound && (
+                <View style={styles.addBox}>
+                  <Text style={styles.addTitle}>
+                    Aucune localité trouvée pour “{locationQuery}”
+                  </Text>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Ville de résidence *</Text>
-              <View style={[styles.pickerContainer, errors.location && styles.inputError]}>
-                <Picker
-                  selectedValue={formData.location}
-                  onValueChange={(value) => {
-                    setFormData({...formData, location: value});
-                    if (errors.location) {
-                      setErrors(prev => ({...prev, location: null}));
-                    }
-                  }}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Choisir une ville..." value="" />
-                  {cities.slice(1).map(city => (
-                    <Picker.Item key={city.id} label={city.name} value={city.name} />
-                  ))}
-                </Picker>
-              </View>
-              {errors.location && <Text style={styles.errorText}>{errors.location}</Text>}
+                  <View style={styles.typeRow}>
+                    <TypePill
+                      label="Ville"
+                      icon="business"
+                      selected={locationType === 'city'}
+                      onPress={() => setLocationType('city')}
+                    />
+                    <TypePill
+                      label="Village"
+                      icon="leaf"
+                      selected={locationType === 'village'}
+                      onPress={() => setLocationType('village')}
+                    />
+                    <TypePill
+                      label="Quartier"
+                      icon="home"
+                      selected={locationType === 'quarter'}
+                      onPress={() => setLocationType('quarter')}
+                    />
+                  </View>
+
+                  <TouchableOpacity style={styles.addBtn} onPress={addNewLocation}>
+                    <Ionicons name="add-circle" size={18} color="#fff" />
+                    <Text style={styles.addBtnText}>
+                      Ajouter “{locationQuery}” ({locationType === 'city' ? 'Ville' : locationType === 'village' ? 'Village' : 'Quartier'})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-          </View>
+          )}
+        </View>
+
+        {/* Choix de rôle */}
+        <View style={styles.roleRow}>
+          <TouchableOpacity
+            onPress={() => setRole('buyer')}
+            style={[styles.roleBtn, role === 'buyer' ? styles.roleBtnActive : styles.roleBtnInactive]}
+          >
+            <Ionicons name="cart" size={14} color={role === 'buyer' ? '#fff' : '#374151'} />
+            <Text style={[styles.roleText, role === 'buyer' && { color: '#fff' }]}>Acheteur</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={handleSubmit}
-            style={styles.submitButton}
+            onPress={() => setRole('farmer')}
+            style={[styles.roleBtn, role === 'farmer' ? styles.roleBtnActive : styles.roleBtnInactive]}
           >
-            <Text style={styles.submitButtonText}>🚀 Créer mon compte</Text>
+            <Ionicons name="leaf" size={14} color={role === 'farmer' ? '#fff' : '#374151'} />
+            <Text style={[styles.roleText, role === 'farmer' && { color: '#fff' }]}>Agriculteur</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Mot de passe */}
+        <View style={styles.inputGroup}>
+          <Ionicons name="lock-closed" size={18} color="#9ca3af" />
+          <TextInput
+            placeholder="Mot de passe"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPw}
+            style={styles.input}
+          />
+          <TouchableOpacity onPress={() => setShowPw(!showPw)}>
+            <Ionicons name={showPw ? 'eye-off' : 'eye'} size={18} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Confirmation */}
+        <View style={styles.inputGroup}>
+          <Ionicons name="lock-closed" size={18} color="#9ca3af" />
+          <TextInput
+            placeholder="Confirmer le mot de passe"
+            value={confirm}
+            onChangeText={setConfirm}
+            secureTextEntry={!showConfirmPw}
+            style={styles.input}
+          />
+          <TouchableOpacity onPress={() => setShowConfirmPw(!showConfirmPw)}>
+            <Ionicons name={showConfirmPw ? 'eye-off' : 'eye'} size={18} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+          <Text style={styles.submitText}>Créer mon compte</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onNavigate?.('login')}
+          style={{ alignSelf: 'center', marginTop: 16 }}
+        >
+          <Text style={{ color: '#2563eb', fontWeight: '600' }}>Déjà un compte ? Se connecter</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  emoji: {
-    fontSize: 60,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-  form: {
-    backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 32,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  section: {
-    marginBottom: 32,
-  },
-  label: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  profileButton: {
-    flexDirection: 'row',
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    alignItems: 'center',
-    marginBottom: 16,
-    backgroundColor: 'white',
-  },
-  profileButtonActive: {
-    borderColor: '#16a34a',
-    backgroundColor: '#f0fdf4',
-  },
-  profileButtonActiveBuyer: {
-    borderColor: '#2563eb',
-    backgroundColor: '#eff6ff',
-  },
-  profileButtonActiveAdmin: {
-    borderColor: '#7c3aed',
-    backgroundColor: '#f3e8ff',
-  },
-  profileButtonError: {
-    borderColor: '#dc2626',
-  },
-  profileEmoji: {
-    fontSize: 40,
-    marginRight: 16,
-  },
-  profileContent: {
-    flex: 1,
-  },
-  profileTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 4,
-  },
-  profileTitleActive: {
-    color: '#16a34a',
-  },
-  profileTitleActiveBuyer: {
-    color: '#2563eb',
-  },
-  profileTitleActiveAdmin: {
-    color: '#7c3aed',
-  },
-  profileDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 8,
-  },
-  profileSango: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#d97706',
-  },
-  inputSection: {
-    gap: 20,
-    marginBottom: 32,
-  },
+  container: { flex: 1, backgroundColor: '#f9fafb' },
+  content: { flex: 1 },
+  contentContainer: { padding: 20, paddingBottom: 100 },
+  title: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 },
+  subtitle: { color: '#6b7280', marginBottom: 16 },
+
   inputGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+    gap: 10,
+  },
+  input: { flex: 1, paddingVertical: 12, fontSize: 16 },
+
+  dropdown: {
+    backgroundColor: '#fff',
+    borderColor: '#e5e7eb',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    maxHeight: 220,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     gap: 8,
   },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  input: {
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    fontSize: 16,
+  dropdownText: { color: '#111827' },
+  dropdownTextMuted: { color: '#9ca3af' },
+
+  addBox: {
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    padding: 12,
     backgroundColor: '#f9fafb',
   },
-  inputError: {
-    borderColor: '#dc2626',
-  },
-  pickerContainer: {
+  addTitle: { color: '#374151', marginBottom: 8 },
+  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  typePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    backgroundColor: '#f9fafb',
   },
-  picker: {
-    height: 50,
-  },
-  errorText: {
-    color: '#dc2626',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  submitButton: {
+  typePillInactive: { backgroundColor: '#fff', borderColor: '#e5e7eb' },
+  typePillActive: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  typePillText: { fontWeight: '700', color: '#374151', fontSize: 12 },
+
+  addBtn: {
     backgroundColor: '#16a34a',
-    padding: 18,
-    borderRadius: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
     alignItems: 'center',
-    shadowColor: '#16a34a',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
   },
-  submitButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-    submitButtonDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  loginSection: {
+  addBtnText: { color: '#fff', fontWeight: '800' },
+
+  roleRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  roleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    gap: 6,
   },
-  loginText: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 8,
+  roleBtnInactive: { backgroundColor: '#fff', borderColor: '#e5e7eb' },
+  roleBtnActive: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  roleText: { fontWeight: '700', color: '#374151' },
+
+  submitBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 6,
   },
-  loginLink: {
-    paddingVertical: 8,
-  },
-  loginLinkText: {
-    fontSize: 16,
-    color: '#2563eb',
-    fontWeight: '600',
-  }
+  submitText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
 
 export default RegisterScreen;

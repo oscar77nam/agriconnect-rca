@@ -1,3 +1,4 @@
+// src/components/screens/ProductsScreen.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -30,16 +31,19 @@ const ProductsScreen = ({
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 10;
-  const [qtyById, setQtyById] = useState({});
+  const [qtyById, setQtyById] = useState({}); // { [id]: number }
 
-  // si vide → refetch
+  // 🔁 tenter un fetch si on arrive sur l'écran sans produits
   useEffect(() => {
     if (user && (!products || products.length === 0)) {
       refetchProducts?.().catch(() => {});
     }
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { setPage(1); }, [search]);
+  // reset pagination quand on tape
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -89,6 +93,7 @@ const ProductsScreen = ({
 
   const ListHeader = () => (
     <View style={{ gap: 12 }}>
+      {/* Bandeau panier */}
       {cart?.length > 0 && (
         <TouchableOpacity
           onPress={() => onNavigate?.('cart')}
@@ -104,6 +109,7 @@ const ProductsScreen = ({
         </TouchableOpacity>
       )}
 
+      {/* Recherche */}
       <View style={styles.searchBox}>
         <Ionicons name="search" size={18} color="#9ca3af" />
         <TextInput
@@ -119,6 +125,7 @@ const ProductsScreen = ({
         )}
       </View>
 
+      {/* Résumé */}
       <View style={styles.filterHeader}>
         <Text style={styles.filterInfo}>
           {total} produit{total > 1 ? 's' : ''} — page {pageClamped}/{totalPages}
@@ -157,6 +164,7 @@ const ProductsScreen = ({
           </View>
         </TouchableOpacity>
 
+        {/* Inline achat */}
         <View style={styles.buyRow}>
           <TouchableOpacity
             onPress={() => setQty(p.id, Math.max(1, qty - 1))}
@@ -257,6 +265,7 @@ const ProductsScreen = ({
         contentContainerStyle={styles.listContainer}
       />
 
+      {/* FAB panier */}
       <TouchableOpacity style={styles.fab} onPress={() => onNavigate?.('cart')}>
         <Ionicons name="cart" size={22} color="#fff" />
         {cart?.length > 0 && (
@@ -309,6 +318,7 @@ const styles = StyleSheet.create({
   filterHeader: {
     marginTop: 2,
     marginBottom: 2,
+    paddingHorizontal: 2,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
@@ -395,6 +405,10 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
   },
   fabBadge: {
     position: 'absolute',

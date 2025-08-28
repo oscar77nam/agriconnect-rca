@@ -1,171 +1,183 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 const BottomNav = ({ 
   user, 
   currentScreen, 
   onNavigate, 
   setShowAddProduct,
-  getCartItemsCount 
+  getCartItemsCount,
+  getPendingOrdersCount,
+  showOrderSummaryModal
 }) => {
-  const getNavItems = () => {
-    if (user?.type === 'farmer') {
-      return [
-        { screen: 'home', icon: 'storefront', label: 'Produits' },
-        { screen: 'add-product', icon: 'add-circle', label: 'Ajouter', special: true },
-        { screen: 'orders', icon: 'receipt', label: 'Commandes' },
-        { screen: 'notifications', icon: 'notifications', label: 'Alertes' },
-        { screen: 'profile', icon: 'person-circle', label: 'Profil' }
-      ];
-    } else if (user?.type === 'buyer') {
-      return [
-        { screen: 'home', icon: 'search-circle', label: 'Explorer' },
-        { screen: 'favorites', icon: 'heart', label: 'Favoris' },
-        { screen: 'cart', icon: 'bag-handle', label: 'Panier', badge: getCartItemsCount && getCartItemsCount() },
-        { screen: 'orders', icon: 'receipt', label: 'Achats' },
-        { screen: 'profile', icon: 'person-circle', label: 'Profil' }
-      ];
-    } else if (user?.type === 'admin') {
-      return [
-        { screen: 'home', icon: 'analytics', label: 'Dashboard' },
-        { screen: 'products', icon: 'cube', label: 'Produits' },
-        { screen: 'orders', icon: 'receipt', label: 'Commandes' },
-        { screen: 'notifications', icon: 'notifications', label: 'Alertes' },
-        { screen: 'profile', icon: 'person-circle', label: 'Profil' }
-      ];
+  const cartItemsCount = getCartItemsCount ? getCartItemsCount() : 0;
+  const pendingOrdersCount = getPendingOrdersCount ? getPendingOrdersCount() : 0;
+
+  const handleAddProductPress = () => {
+    if (setShowAddProduct) {
+      setShowAddProduct(true);
     }
-    return [];
   };
 
-  const navItems = getNavItems();
+  const handleOrdersPress = () => {
+    if (pendingOrdersCount > 0 && showOrderSummaryModal) {
+      // S'il y a des commandes en attente, afficher le récapitulatif
+      showOrderSummaryModal();
+    } else {
+      // Sinon, aller à l'écran des commandes validées
+      onNavigate('orders');
+    }
+  };
+
+  const NavButton = ({ screen, icon, label, onPress, badge, badgeColor }) => {
+    const isActive = currentScreen === screen;
+    
+    return (
+      <TouchableOpacity 
+        style={styles.navButton} 
+        onPress={onPress || (() => onNavigate(screen))}
+      >
+        <View style={styles.iconContainer}>
+          <Text style={[styles.navIcon, isActive && styles.navIconActive]}>
+            {icon}
+          </Text>
+          {badge > 0 && (
+            <View style={[styles.badge, { backgroundColor: badgeColor || '#ef4444' }]}>
+              <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.navContainer}>
-        {navItems.map(({ screen, icon, label, special, badge }) => (
-          <TouchableOpacity
-            key={screen}
-            onPress={() => {
-              if (screen === 'add-product') {
-                setShowAddProduct(true);
-              } else {
-                onNavigate(screen);
-              }
-            }}
-            style={[
-              styles.navItem,
-              currentScreen === screen && styles.navItemActive,
-              special && styles.navItemSpecial
-            ]}
-          >
-            <View style={styles.iconContainer}>
-              <Ionicons 
-                name={icon} 
-                size={24} 
-                color={
-                  special ? 'white' :
-                  currentScreen === screen ? '#16a34a' : '#6b7280'
-                } 
-              />
-              {badge > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{badge}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={[
-              styles.navLabel,
-              currentScreen === screen && styles.navLabelActive,
-              special && styles.navLabelSpecial
-            ]}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <NavButton 
+        screen="home" 
+        icon="🏠" 
+        label="Explorer" 
+      />
+
+      {user?.type === 'buyer' && (
+        <NavButton 
+          screen="favorites" 
+          icon="❤️" 
+          label="Favoris" 
+        />
+      )}
+
+      {user?.type === 'farmer' && (
+        <TouchableOpacity style={styles.addButton} onPress={handleAddProductPress}>
+          <Text style={styles.addButtonText}>+</Text>
+        </TouchableOpacity>
+      )}
+
+      {user?.type === 'buyer' && (
+        <NavButton 
+          screen="cart" 
+          icon="🛒" 
+          label="Panier" 
+          badge={cartItemsCount}
+          badgeColor="#f59e0b"
+        />
+      )}
+
+      <NavButton 
+        screen="orders" 
+        icon="📦" 
+        label={pendingOrdersCount > 0 ? "Commandes" : "Achats"} 
+        onPress={handleOrdersPress}
+        badge={pendingOrdersCount}
+        badgeColor="#16a34a"
+      />
+
+      <NavButton 
+        screen="profile" 
+        icon="👤" 
+        label="Profil" 
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flexDirection: 'row',
     backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingHorizontal: 8,
     paddingVertical: 8,
     paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowRadius: 4,
+    elevation: 8,
   },
-  navContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    maxWidth: 400,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  navItem: {
+  navButton: {
+    flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    minWidth: 60,
-    flex: 1,
-  },
-  navItemActive: {
-    backgroundColor: '#f0fdf4',
-    transform: [{ scale: 1.05 }],
-  },
-  navItemSpecial: {
-    backgroundColor: '#16a34a',
-    transform: [{ scale: 1.1 }],
   },
   iconContainer: {
     position: 'relative',
+    marginBottom: 4,
   },
-  badge: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: '#dc2626',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+  navIcon: {
+    fontSize: 24,
+    opacity: 0.6,
   },
-  badgeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  navIconActive: {
+    opacity: 1,
   },
   navLabel: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 12,
     color: '#6b7280',
-    marginTop: 4,
-    textAlign: 'center',
+    fontWeight: '500',
   },
   navLabelActive: {
     color: '#16a34a',
     fontWeight: '600',
   },
-  navLabelSpecial: {
+  addButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#16a34a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+    marginTop: -8,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  addButtonText: {
     color: 'white',
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

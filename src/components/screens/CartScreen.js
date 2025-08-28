@@ -1,383 +1,325 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../common/Header';
 
-const CartScreen = ({ 
+// Helpers sûrs
+const n = (v) => {
+  const x = typeof v === 'string' ? parseFloat(v) : Number(v);
+  return Number.isFinite(x) ? x : 0;
+};
+const fmt = (v) => {
+  const x = n(v);
+  try { return x.toLocaleString('fr-FR'); } catch { return String(x); }
+};
+
+const CartScreen = ({
   user,
-  cart,
-  onBack,
-  onHome,
-  screenHistory,
-  currentScreen,
+  cart = [],
   updateCartQuantity,
   removeFromCart,
   clearCart,
   checkout,
-  getCartTotal
+  onNavigate,
+  onBack,
+  onHome,
+  screenHistory,
+  currentScreen,
 }) => {
-  const handleCheckout = () => {
-    if (cart.length === 0) {
-      Alert.alert('Panier vide', 'Ajoutez des produits avant de passer commande.');
-      return;
-    }
+  // Nettoyer les items invalides (product absent)
+  const saneItems = useMemo(
+    () => (Array.isArray(cart) ? cart.filter(it => it && it.product) : []),
+    [cart]
+  );
 
-    Alert.alert(
-      'Confirmer la commande',
-      `Total: ${getCartTotal().toLocaleString()} FCFA\n\nVoulez-vous passer cette commande ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Commander', 
-          style: 'default',
-          onPress: () => checkout()
-        }
-      ]
-    );
-  };
+  // Dérivés robustes
+  const lines = useMemo(() => {
+    return saneItems.map((it) => {
+      const product = it.product || {};
+      const qty = Math.max(1, n(it.quantity));
+      const unitPrice = n(product.price ?? it.unit_price ?? 0);
+      const lineTotal = unitPrice * qty;
+      return { product, qty, unitPrice, lineTotal };
+    });
+  }, [saneItems]);
 
-  const handleClearCart = () => {
-    if (cart.length === 0) return;
+  const cartTotal = useMemo(
+    () => lines.reduce((sum, l) => sum + l.lineTotal, 0),
+    [lines]
+  );
+  const itemsCount = useMemo(
+    () => lines.reduce((sum, l) => sum + l.qty, 0),
+    [lines]
+  );
 
+  const onConfirmClear = () => {
+    if (!lines.length) return;
     Alert.alert(
       'Vider le panier',
-      'Êtes-vous sûr de vouloir vider votre panier ?',
+      'Êtes-vous sûr de vouloir supprimer tous les articles ?',
       [
         { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Vider', 
-          style: 'destructive',
-          onPress: () => clearCart()
-        }
+        { text: 'Vider', style: 'destructive', onPress: () => clearCart?.() },
       ]
     );
   };
+
+  const renderItem = ({ item, index }) => {
+    const { product, qty, unitPrice, lineTotal } = item;
+    const emoji = product.image || product.emoji || '🥕';
+    const title = product.name || product.title || 'Produit';
+    const farmer = product.farmer_name || product.farmer || '—';
+    const unit = product.unit || 'kg';
+
+    return (
+      <View key={product.id ?? index} style={styles.card}>
+        <View style={styles.rowTop}>
+          <Text style={styles.emoji}>{emoji}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.name} numberOfLines={1}>{title}</Text>
+            <Text style={styles.meta} numberOfLines={1}>Par {farmer}</Text>
+
+            {/* Prix unitaire */}
+            <Text style={styles.price}>{fmt(unitPrice)} FCFA/{unit}</Text>
+
+            {/* Sous-total */}
+            <Text style={styles.subTotal}>
+              Sous-total: <Text style={styles.subTotalStrong}>{fmt(lineTotal)} FCFA</Text>
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => removeFromCart?.(product.id)}
+            style={styles.delBtn}
+          >
+            <Ionicons name="trash" size={18} color="#dc2626" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Quantité */}
+        <View style={styles.qtyRow}>
+          <TouchableOpacity
+            onPress={() => updateCartQuantity?.(product.id, Math.max(1, qty - 1))}
+            style={styles.qtyBtn}
+          >
+            <Ionicons name="remove" size={18} color="#111827" />
+          </TouchableOpacity>
+
+          <View style={styles.qtyDisplay}>
+            <Text style={styles.qtyText}>{qty}</Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => updateCartQuantity?.(product.id, qty + 1)}
+            style={styles.qtyBtn}
+          >
+            <Ionicons name="add" size={18} color="#111827" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.separator} />
+
+        {/* Total de la ligne */}
+        <Text style={styles.lineTotal}>{fmt(lineTotal)} FCFA</Text>
+      </View>
+    );
+  };
+
+  const ListHeader = () => (
+    <View style={styles.headerBar}>
+      <Text style={styles.headerBarText}>
+        {itemsCount} article{itemsCount > 1 ? 's' : ''} dans votre panier
+      </Text>
+      <TouchableOpacity style={styles.clearBtn} onPress={onConfirmClear}>
+        <Ionicons name="trash" size={16} color="#ef4444" />
+        <Text style={styles.clearBtnText}>Vider</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const ListEmpty = () => (
+    <View style={styles.empty}>
+      <Ionicons name="bag-outline" size={54} color="#cbd5e1" />
+      <Text style={styles.emptyTitle}>Votre panier est vide</Text>
+      <Text style={styles.emptySub}>
+        Explorez le marketplace pour trouver des produits frais
+      </Text>
+      <TouchableOpacity
+        style={styles.continueBtn}
+        onPress={() => onNavigate?.('products')}
+      >
+        <Ionicons name="pricetags" size={18} color="#fff" />
+        <Text style={styles.continueBtnText}>Continuer mes achats</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const ListFooter = () => (
+    <View style={styles.footer}>
+      <View style={styles.totalRow}>
+        <Text style={styles.totalLabel}>Total à payer</Text>
+        <Text style={styles.totalValue}>{fmt(cartTotal)} FCFA</Text>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.secondaryBtn, { marginTop: 8 }]}
+        onPress={() => onNavigate?.('products')}
+      >
+        <Ionicons name="pricetags" size={18} color="#1d4ed8" />
+        <Text style={styles.secondaryBtnText}>Continuer mes achats</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.primaryBtn, { marginTop: 10 }]}
+        onPress={() => {
+          if (!itemsCount) return;
+          checkout?.();
+          onNavigate?.('products');
+        }}
+      >
+        <Ionicons name="card" size={18} color="#fff" />
+        <Text style={styles.primaryBtnText}>
+          Passer commande ({itemsCount})
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <Header 
+      <Header
         title="🛒 Mon Panier"
+        user={user}
         onBack={onBack}
         onHome={onHome}
         screenHistory={screenHistory}
         currentScreen={currentScreen}
-        user={user}
       />
-      
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerText}>
-            {cart.length} article{cart.length > 1 ? 's' : ''} dans votre panier
-          </Text>
-          {cart.length > 0 && (
-            <TouchableOpacity onPress={handleClearCart} style={styles.clearButton}>
-              <Ionicons name="trash-outline" size={20} color="#dc2626" />
-              <Text style={styles.clearButtonText}>Vider</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-      
-      {cart.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="bag-outline" size={80} color="#d1d5db" />
-          <Text style={styles.emptyTitle}>Votre panier est vide</Text>
-          <Text style={styles.emptySubtext}>
-            Explorez le marketplace pour trouver des produits frais
-          </Text>
-          <TouchableOpacity 
-            onPress={onHome}
-            style={styles.shopButton}
-          >
-            <Text style={styles.shopButtonText}>🛒 Faire mes courses</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-            {cart.map(({ product, quantity }) => (
-              <View key={product.id} style={styles.cartItem}>
-                <View style={styles.itemContent}>
-                  <Text style={styles.productEmoji}>{product.image}</Text>
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <Text style={styles.farmerName}>Par {product.farmer}</Text>
-                    <Text style={styles.productPrice}>
-                      {product.price.toLocaleString()} FCFA/{product.unit}
-                    </Text>
-                  </View>
-                </View>
-                
-                <View style={styles.quantityControls}>
-                  <TouchableOpacity
-                    onPress={() => updateCartQuantity(product.id, quantity - 1)}
-                    style={styles.quantityButton}
-                  >
-                    <Ionicons name="remove" size={20} color="#374151" />
-                  </TouchableOpacity>
-                  
-                  <View style={styles.quantityDisplay}>
-                    <Text style={styles.quantityText}>{quantity}</Text>
-                  </View>
-                  
-                  <TouchableOpacity
-                    onPress={() => updateCartQuantity(product.id, quantity + 1)}
-                    style={styles.quantityButton}
-                    disabled={quantity >= product.stock}
-                  >
-                    <Ionicons 
-                      name="add" 
-                      size={20} 
-                      color={quantity >= product.stock ? '#d1d5db' : '#374151'} 
-                    />
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.itemFooter}>
-                  <Text style={styles.itemTotal}>
-                    {(product.price * quantity).toLocaleString()} FCFA
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => removeFromCart(product.id)}
-                    style={styles.removeButton}
-                  >
-                    <Ionicons name="trash" size={18} color="#dc2626" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-          
-          <View style={styles.footer}>
-            <View style={styles.totalContainer}>
-              <Text style={styles.totalLabel}>Total à payer</Text>
-              <Text style={styles.totalAmount}>
-                {getCartTotal().toLocaleString()} FCFA
-              </Text>
-            </View>
-            
-            <TouchableOpacity
-              onPress={handleCheckout}
-              style={styles.checkoutButton}
-            >
-              <Ionicons name="card" size={24} color="white" />
-              <Text style={styles.checkoutButtonText}>
-                Passer commande ({cart.length})
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      )}
+
+      <FlatList
+        data={lines}
+        keyExtractor={(it, idx) => String(it?.product?.id ?? idx)}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
+        ListFooterComponent={ListFooter}
+        contentContainerStyle={styles.listContainer}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  header: {
-    backgroundColor: '#2563eb',
-    padding: 24,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerText: {
-    color: 'white',
-    fontSize: 16,
-    opacity: 0.9,
-  },
-  clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+  container: { flex: 1, backgroundColor: '#f9fafb' },
+  listContainer: { padding: 12, paddingBottom: 140 },
+
+  headerBar: {
+    backgroundColor: '#1d4ed8',
+    borderRadius: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  clearButtonText: {
-    color: '#dc2626',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 24,
-    paddingBottom: 180,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  shopButton: {
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 16,
-  },
-  shopButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  cartItem: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.22,
-    shadowRadius: 2.22,
-    elevation: 3,
-  },
-  itemContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  productEmoji: {
-    fontSize: 40,
-    marginRight: 16,
-  },
-  productInfo: {
-    flex: 1,
-  },
-  productName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  farmerName: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  productPrice: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2563eb',
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    gap: 16,
-  },
-  quantityButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quantityDisplay: {
-    backgroundColor: '#e5e7eb',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  quantityText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#374151',
-  },
-  itemFooter: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  headerBarText: { color: '#fff', fontWeight: '700' },
+  clearBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingTop: 16,
+    gap: 6,
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  itemTotal: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#16a34a',
+  clearBtnText: { color: '#ef4444', fontWeight: '700' },
+
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 12,
+    marginBottom: 10,
   },
-  removeButton: {
-    padding: 8,
-    borderRadius: 20,
+  rowTop: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  emoji: { fontSize: 30 },
+  name: { fontWeight: '800', color: '#111827' },
+  meta: { color: '#6b7280' },
+  price: { color: '#16a34a', fontWeight: '800', marginTop: 2 },
+
+  subTotal: { color: '#4b5563', marginTop: 2 },
+  subTotalStrong: { color: '#111827', fontWeight: '800' },
+
+  delBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fee2e2',
   },
+
+  qtyRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  qtyBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qtyDisplay: {
+    backgroundColor: '#e5e7eb',
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 999, minWidth: 48, alignItems: 'center',
+  },
+  qtyText: { fontWeight: '800', color: '#111827' },
+
+  separator: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 10 },
+
+  lineTotal: { color: '#16a34a', fontWeight: '800', fontSize: 16 },
+
   footer: {
-    position: 'absolute',
-    bottom: 80,
-    left: 0,
-    right: 0,
-    backgroundColor: 'white',
-    padding: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    backgroundColor: '#fff',
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 12,
   },
-  totalContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { color: '#374151', fontWeight: '700' },
+  totalValue: { color: '#16a34a', fontWeight: '900', fontSize: 18 },
+
+  secondaryBtn: {
+    backgroundColor: '#e0ecff',
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  totalAmount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#16a34a',
-  },
-  checkoutButton: {
-    backgroundColor: '#16a34a',
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 16,
     gap: 8,
   },
-  checkoutButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+  secondaryBtnText: { color: '#1d4ed8', fontWeight: '800' },
+
+  primaryBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
   },
+  primaryBtnText: { color: '#fff', fontWeight: '800' },
 });
 
 export default CartScreen;

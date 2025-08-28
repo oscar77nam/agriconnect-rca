@@ -1,311 +1,229 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { useAgriConnect } from './hooks/useAgriConnect';
-import WelcomeScreen from './components/screens/WelcomeScreen';
-import LoginScreen from './components/screens/LoginScreen';
-import RegisterScreen from './components/screens/RegisterScreen';
-import HomeScreen from './components/screens/HomeScreen';
-import OrdersScreen from './components/screens/OrdersScreen';
-import NotificationsScreen from './components/screens/NotificationsScreen';
-import ProfileScreen from './components/screens/ProfileScreen';
-import CartScreen from './components/screens/CartScreen';
-import FavoritesScreen from './components/screens/FavoritesScreen';
-import ProductsScreen from './components/screens/ProductsScreen';
-import SettingsScreen from './components/screens/SettingsScreen';
-import BottomNav from './components/common/BottomNav';
-import ProductForm from './components/common/ProductForm';
-import ConnectionStatus from './components/common/ConnectionStatus';
-// Temporairement commenté pour debug
-// import OrderModal from './components/common/OrderModal';
+// src/AgriConnectRCA.js
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AgriConnectRCA = () => {
-  const {
-    // States
-    currentScreen,
-    user,
-    products,
-    filteredProducts,
-    orders,
-    searchTerm,
-    selectedCategory,
-    selectedCity,
-    notifications,
-    favorites,
-    showAddProduct,
-    editingProduct,
-    screenHistory,
-    categories,
-    cities,
-    cart,
-    showOrderModal,
-    orderingProduct,
-    loading,
-    isOnline,
-    
-    // Setters
-    setSearchTerm,
-    setSelectedCategory,
-    setSelectedCity,
-    setShowAddProduct,
-    setEditingProduct,
-    
-    // Actions
-    navigateToScreen,
-    goBack,
-    goHome,
-    handleRegister,
-    handleLogin,
-    logout,
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    getUserOrders,
-    addToCart,
-    removeFromCart,
-    updateCartQuantity,
-    clearCart,
-    checkout,
-    toggleFavorite,
-    getStats,
-    getCartTotal,
-    getCartItemsCount,
-    showOrderModalForProduct,
-    hideOrderModal,
-    handleOrderConfirm,
-    clearAllNotifications,
-    addNotification
-  } = useAgriConnect();
+const ANDROID_LOCALHOST = 'http://10.0.2.2:3000';
+const IOS_WEB_LOCALHOST = 'http://localhost:3000';
 
-  // Props communes pour tous les écrans
-  const commonScreenProps = {
-    user,
-    onBack: goBack,
-    onHome: goHome,
-    screenHistory,
-    currentScreen
-  };
+const DEFAULT_BASE_URL = Platform.OS === 'android' ? ANDROID_LOCALHOST : IOS_WEB_LOCALHOST;
+const TOKEN_KEY = 'agriconnect_token';
+const USER_KEY  = 'agriconnect_user';
 
-  // Props pour les écrans avec navigation
-  const navigationProps = {
-    onNavigate: navigateToScreen,
-    ...commonScreenProps
-  };
+let BASE_URL = DEFAULT_BASE_URL;
+let inMemoryToken = null;
 
-  // ========== RENDU PRINCIPAL ==========
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <Text style={styles.loadingEmoji}>🌾</Text>
-        <Text style={styles.loadingText}>AgriConnect RCA</Text>
-        <Text style={styles.loadingSubtext}>Chargement en cours...</Text>
-        {!isOnline && (
-          <Text style={styles.offlineText}>Mode hors ligne</Text>
-        )}
-      </View>
-    );
+const getBaseUrl = async () => {
+  try {
+    const saved = await AsyncStorage.getItem('agriconnect_base_url');
+    return saved || BASE_URL;
+  } catch {
+    return BASE_URL;
   }
-
-  if (!user) {
-    return (
-      <View style={styles.container}>
-        {currentScreen === 'register' ? (
-          <RegisterScreen 
-            onRegister={handleRegister}
-            onNavigate={navigateToScreen}
-            loading={loading}
-            {...commonScreenProps}
-          />
-        ) : currentScreen === 'login' ? (
-          <LoginScreen 
-            onLogin={handleLogin}
-            onNavigate={navigateToScreen}
-            loading={loading}
-            {...commonScreenProps}
-          />
-        ) : (
-          <WelcomeScreen onNavigate={navigateToScreen} />
-        )}
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      {/* Indicateur de statut de connexion */}
-      <ConnectionStatus isOnline={isOnline} loading={loading} />
-      
-      {/* ========== MODALS ========== */}
-      {showAddProduct && (
-        <ProductForm 
-          onSubmit={addProduct}
-          onCancel={() => setShowAddProduct(false)}
-        />
-      )}
-      
-      {editingProduct && (
-        <ProductForm 
-          product={editingProduct}
-          onSubmit={(data) => updateProduct(editingProduct.id, data)}
-          onCancel={() => setEditingProduct(null)}
-        />
-      )}
-
-      {/* MODAL DE COMMANDE - Temporairement désactivé pour debug
-      {showOrderModal && (
-        <OrderModal 
-          visible={showOrderModal}
-          product={orderingProduct}
-          user={user}
-          onClose={hideOrderModal}
-          onConfirm={handleOrderConfirm}
-        />
-      )}
-      */}
-
-      {/* ========== ÉCRANS PRINCIPAUX ========== */}
-      {currentScreen === 'home' && (
-        <HomeScreen 
-          filteredProducts={filteredProducts}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          selectedCity={selectedCity}
-          setSelectedCity={setSelectedCity}
-          categories={categories}
-          cities={cities}
-          favorites={favorites}
-          setShowAddProduct={setShowAddProduct}
-          setEditingProduct={setEditingProduct}
-          deleteProduct={deleteProduct}
-          getUserOrders={getUserOrders}
-          addToCart={addToCart}
-          showOrderModalForProduct={showOrderModalForProduct}
-          toggleFavorite={toggleFavorite}
-          products={products}
-          orders={orders}
-          getStats={getStats}
-          {...commonScreenProps}
-        />
-      )}
-      
-      {currentScreen === 'orders' && (
-        <OrdersScreen 
-          getUserOrders={getUserOrders}
-          {...commonScreenProps}
-        />
-      )}
-      
-      {currentScreen === 'notifications' && (
-        <NotificationsScreen 
-          notifications={notifications}
-          clearAllNotifications={clearAllNotifications}
-          {...commonScreenProps}
-        />
-      )}
-      
-      {currentScreen === 'profile' && (
-        <ProfileScreen 
-          getStats={getStats}
-          logout={logout}
-          onNavigate={navigateToScreen}
-          {...commonScreenProps}
-        />
-      )}
-
-      {/* ========== ÉCRANS SUPPLÉMENTAIRES ========== */}
-      {currentScreen === 'favorites' && (
-        <FavoritesScreen 
-          products={products}
-          favorites={favorites}
-          toggleFavorite={toggleFavorite}
-          addToCart={addToCart}
-          showOrderModalForProduct={showOrderModalForProduct}
-          {...commonScreenProps}
-        />
-      )}
-
-      {currentScreen === 'cart' && (
-        <CartScreen 
-          cart={cart}
-          updateCartQuantity={updateCartQuantity}
-          removeFromCart={removeFromCart}
-          clearCart={clearCart}
-          checkout={checkout}
-          getCartTotal={getCartTotal}
-          {...commonScreenProps}
-        />
-      )}
-
-      {currentScreen === 'products' && (
-        <ProductsScreen 
-          products={products}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          selectedCity={selectedCity}
-          setSelectedCity={setSelectedCity}
-          categories={categories}
-          cities={cities}
-          filteredProducts={filteredProducts}
-          {...commonScreenProps}
-        />
-      )}
-
-      {currentScreen === 'settings' && (
-        <SettingsScreen 
-          {...commonScreenProps}
-        />
-      )}
-
-      {/* ========== NAVIGATION DU BAS ========== */}
-      <BottomNav 
-        user={user}
-        currentScreen={currentScreen}
-        onNavigate={navigateToScreen}
-        setShowAddProduct={setShowAddProduct}
-        getCartItemsCount={getCartItemsCount}
-      />
-    </View>
-  );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#16a34a',
-  },
-  loadingEmoji: {
-    fontSize: 80,
-    marginBottom: 16,
-  },
-  loadingText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 8,
-  },
-  loadingSubtext: {
-    fontSize: 16,
-    color: 'white',
-    opacity: 0.9,
-    marginBottom: 16,
-  },
-  offlineText: {
-    fontSize: 14,
-    color: '#fbbf24',
-    fontWeight: '600',
-    backgroundColor: 'rgba(251, 191, 36, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-});
+const setToken = async (token) => {
+  inMemoryToken = token || null;
+  if (!token) {
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    return;
+  }
+  await AsyncStorage.setItem(TOKEN_KEY, token);
+};
 
-export default AgriConnectRCA;
+const getToken = async () => {
+  if (inMemoryToken) return inMemoryToken;
+  const t = await AsyncStorage.getItem(TOKEN_KEY);
+  inMemoryToken = t;
+  return t;
+};
+
+const setUser = async (user) => {
+  if (!user) {
+    await AsyncStorage.removeItem(USER_KEY);
+    return;
+  }
+  await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+};
+
+export const getUser = async () => {
+  const raw = await AsyncStorage.getItem(USER_KEY);
+  try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+};
+
+const authHeaders = async () => {
+  const t = await getToken();
+  return t
+    ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
+};
+
+const handle = async (res) => {
+  const txt = await res.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch { data = { raw: txt }; }
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const err = new Error(msg); err.status = res.status; err.data = data;
+    throw err;
+  }
+  return data;
+};
+
+// ---------------- AUTH ----------------
+const register = async ({ name, phone, password, location, type }) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, phone, password, location, user_type: type || 'buyer' }),
+  });
+  const data = await handle(res);
+  if (data?.token) await setToken(data.token);
+  if (data?.user)  await setUser(data.user);
+  return data;
+};
+
+const login = async ({ phone, password }) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, password }),
+  });
+  const data = await handle(res);
+  if (data?.token) await setToken(data.token);
+  if (data?.user)  await setUser(data.user);
+  return data;
+};
+
+const logout = async () => {
+  await setToken(null);
+  await setUser(null);
+  return true;
+};
+
+// Forgot / Reset
+const forgotPassword = async (phone) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/auth/forgot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  });
+  return handle(res);
+};
+
+const verifyOtp = async (phone, code) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, code }),
+  });
+  return handle(res);
+};
+
+const resetPassword = async (phone, code, new_password) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/auth/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, code, new_password }),
+  });
+  return handle(res);
+};
+
+const resendOtp = async (phone) => forgotPassword(phone);
+
+// ---------------- PRODUITS ----------------
+const getProducts = async (params = {}) => {
+  const base = await getBaseUrl();
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${base}/api/products${qs ? `?${qs}` : ''}`, { headers: await authHeaders() });
+  return handle(res);
+};
+
+const addProduct = async (payload) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/products`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handle(res);
+};
+
+const updateProduct = async (id, payload) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/products/${id}`, {
+    method: 'PUT',
+    headers: await authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handle(res);
+};
+
+const deleteProduct = async (id) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/products/${id}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
+  return handle(res);
+};
+
+// ---------------- COMMANDES (simple) ----------------
+const getOrders = async () => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/orders`, { headers: await authHeaders() });
+  return handle(res);
+};
+
+const createOrder = async (payload) => {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/orders`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handle(res);
+};
+
+// ---------------- UPLOAD ----------------
+const uploadImage = async (filePart) => {
+  const base = await getBaseUrl();
+  const headers = {};
+  const token = await getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const form = new FormData();
+  form.append('file', filePart);
+
+  const res = await fetch(`${base}/api/upload`, { method: 'POST', headers, body: form });
+  return handle(res);
+};
+
+const API = {
+  getBaseUrl,
+  setToken,
+  getToken,
+  getUser,
+  logout,
+
+  // auth
+  register, login,
+
+  // forgot/reset
+  forgotPassword, verifyOtp, resetPassword, resendOtp,
+
+  // produits
+  getProducts, addProduct, updateProduct, deleteProduct,
+
+  // commandes
+  getOrders, createOrder,
+
+  // upload
+  uploadImage,
+};
+
+export default API;

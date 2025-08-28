@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Votre adresse IP : 192.168.1.178
 const API_BASE_URL = __DEV__ 
-  ? 'http://192.168.1.178:3000/api'  // ← Votre IP exacte
+  ? 'http://192.168.1.178:3000/api'
   : 'https://votre-api-prod.com/api';
 
 class DatabaseService {
@@ -136,7 +136,7 @@ class DatabaseService {
         phone: userData.phone.trim(),
         password: userData.password,
         location: userData.location || 'Non spécifié',
-        user_type: userData.type || 'buyer'
+        user_type: userData.user_type || 'buyer'
       });
 
       if (response.success && response.token) {
@@ -162,20 +162,50 @@ class DatabaseService {
         throw new Error('Téléphone et mot de passe sont requis');
       }
 
+      console.log('📡 Envoi requête de connexion...');
+
       const response = await this.makeRequest('/auth/login', 'POST', {
         phone: credentials.phone.trim(),
         password: credentials.password
       });
 
+      console.log('📨 Réponse de connexion complète:', response);
+
       if (response.success && response.token) {
         await this.saveToken(response.token);
         await AsyncStorage.setItem('currentUser', JSON.stringify(response.user));
-        console.log('✅ Connexion réussie');
+        console.log('✅ Connexion réussie, token sauvegardé');
+        return response;
+      } else {
+        console.log('❌ Connexion échouée:', response);
+        throw new Error(response.message || 'Identifiants incorrects');
       }
 
-      return response;
     } catch (error) {
-      console.error('❌ Erreur connexion:', error);
+      console.error('❌ Erreur connexion complète:', error);
+      
+      // Si l'erreur est HTTP 401, essayer le mode démo
+      if (error.message.includes('401')) {
+        console.log('🎭 Tentative de connexion en mode démo...');
+        
+        const demoUsers = [
+          { id: 1, name: 'Jean Bokassa', phone: '+23670123456', type: 'farmer', location: 'PK5, Bangui' },
+          { id: 2, name: 'Marie Yakoma', phone: '+23670987654', type: 'buyer', location: 'Bégoua' },
+          { id: 3, name: 'Admin User', phone: '+23670111111', type: 'admin', location: 'Bangui' }
+        ];
+        
+        const demoUser = demoUsers.find(u => u.phone === credentials.phone);
+        if (demoUser && credentials.password === 'demo123') {
+          console.log('✅ Connexion démo réussie pour:', demoUser.name);
+          await AsyncStorage.setItem('currentUser', JSON.stringify(demoUser));
+          return { 
+            success: true, 
+            user: demoUser,
+            token: 'demo-token-' + demoUser.id 
+          };
+        }
+      }
+      
       throw error;
     }
   }
